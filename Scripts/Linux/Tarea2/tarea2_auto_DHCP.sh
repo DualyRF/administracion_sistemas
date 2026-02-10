@@ -13,40 +13,181 @@ ip_Final=""
 tiempo_Sesion=""
 gateway=""
 dns=""
+mascara=""
+rango=0
 
 #Funciones
-validar_IP() {
+validar_IP(){
+	# Variable
     	local ip="$1"
-	
+	echo -e "${rojo}"
+
     	# Validar formato X.X.X.X solo con numeros
     	if ! [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-    	    echo -e "${rojo}Direccion IP invalida, tiene que contener un formato X.X.X.X unicamente con numeros positivos${nc}"
+    		echo -e "Direccion IP invalida, tiene que contener un formato X.X.X.X unicamente con numeros positivos${nc}"
         	return 1
    	fi
-
-	# Validar que no sea 0.0.0.0 ni 255.255.255.255
-	if [ "$ip" = "0.0.0.0" || "$ip" = "255.255.255.255"]; then
-		echo -e "${rojo}Direccion IP invalida, no puede ser 0.0.0.0 ni 255.255.255.255${nc}"
-	fi 
 	
 	# Validar cada octeto entre 0 y 255
     	IFS='.' read -r a b c d <<< "$ip"
-
+	if [[ "$a" -eq 0  || "$d" -eq 0 ]]; then
+		echo -e "Direccion IP invalida, no puede ser 0.X.X.X ni X.X.X.0${nc}"
+		return 1
+	fi
+	
+	# Validar que no tenga 0 al izquierda y que no pasen los rangos de 8 bits
     	for octeto in $a $b $c $d; do
-        	if (( octeto < 0 || octeto > 255 )); then
-            	echo -e "${rojo}Direccion IP invalida, no puede ser mayor a 255 ni menor a 0${nc}"
-            	return 1
+		if [[ "$octeto" =~ ^0[0-9]+ ]]; then
+			echo -e "Direccion IP invalida, no se pueden poner 0 a la izquierda a menos que sea 0${nc}"
+			return 1
+		fi
+        	if [[ "$octeto" -lt 0 || "$octeto" -gt 255 ]]; then
+            		echo -e "Direccion IP invalida, no puede ser mayor a 255 ni menor a 0${nc}"
+            		return 1
         	fi
     	done
 
-    	return 0
-}  
+	# Validar que no sea 0.0.0.0 ni 255.255.255.255
+	if [[ "$ip" = "0.0.0.0" || "$ip" = "255.255.255.255" ]]; then
+		echo -e "Direccion IP invalida, no puede ser 0.0.0.0 ni 255.255.255.255${nc}"
+		return 1
+	fi
 
-bucle_Verificacion(){
-	msg=("Rango inicial de la IP:",  "Rango final de la IP:")
-	if [ "$opc" -e 1]; then
+	# Validar los espacios reservados para uso experimental (240.0.0.0-255.255.255.254)
+	if [[ "$a" -gt 240 && "$a" -lt 255 ]]; then
+		echo -e "Direccion IP invalida, las direcciones del rango 240.0.0.0 al 255.255.255.254 estan reservadas para usos experimentales${nc}"
+		return 1
+	fi
+
+	# Validar los espacios reservados para multicast (224.0.0.0-239.255.255.255)
+	if [[ "$a" -gt 224 && "$a" -lt 239 ]]; then
+		echo -e "Direccion IP invalida, las direcciones del rango 224.0.0.0 al 239.255.255.255 estan reservadas para multicast${nc}"
+		return 1
+	fi
+
+	echo -e "${nc}"
+    	return 0
+}
+
+#comp_Rango(){
+#	local ip1=$1
+#	local ip2=$2
+
+#	IFS='.' read -ra octetosIni <<< "$ip1"
+#	read -ra octetosFin <<< "$ip2"
+	
+
+#	if [[ "${octetoIni[0]}" -le "${octetoFin[0]}" ]]; then
+#		if
+#	fi
+
+#	for i in {0..3} do
 		
-	fi else
+#	done
+#}
+
+calcular_Rango(){
+	local ip1=$1
+	local ip2=$2
+	local n=0
+	local rango1=0
+	local rango2=0
+	local rangof=0
+	local pot = 0
+
+	IFS='.' read -ra octetosIni <<< "$ip1"
+	IFS='.' read -ra octetosFin <<< "$ip2"
+
+	for ((i=3; i>=0; i--)) do
+		pot=$(( 255 ** n ))
+		rango1=$(( (${octetosIni[i]} * pot) + rango1))
+		rango2=$(( (${octetosFin[i]} * pot) + rango2))
+		echo -e "Pot:$pot \nRango1:$rango1 \nRango 2:$rango2"
+		n=$(( n + n ))
+	done
+
+	rangof=$(( rango2 - rango1 ))
+	echo -e "Rango fina: $rangof"
+	return $rangof
+}
+
+validar_IP_Masc(){
+	echo $( calcular_Rango "$1" "$2" "$3" )
+	return 0
+}
+
+validar_Mascara(){
+	local masc="$1"
+	echo -e "${rojo}"
+	
+	# Validar formato X.X.X.X solo con numeros
+    	if ! [[ "$masc" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+    		echo -e "Mascara invalida, tiene que contener un formato X.X.X.X unicamente con numeros positivos${nc}"
+        	return 1
+   	fi
+
+	# Validar cada octeto entre 0 y 255
+    	IFS='.' read -r a b c d <<< "$masc"
+	if [ "$a" -eq 0 ]; then
+		echo -e "Mascara invalida, no puede ser 0.X.X.X${nc}"
+		return 1
+	fi
+	
+	# Validar que no tenga 0 al izquierda y que no pasen los rangos de 8 bits
+    	for octeto in $a $b $c $d; do
+		if [[ "$octeto" =~ ^0[0-9]+ ]]; then
+			echo -e "Mascara invalida, no se pueden poner 0 a la izquierda a menos que sea 0${nc}"
+			return 1
+		fi
+        	if [[ "$octeto" -lt 0 || "$octeto" -gt 255 ]]; then
+            		echo -e "Mascara invalida, no puede ser mayor a 255 ni menor a 0${nc}"
+            		return 1
+        	fi
+    	done
+
+	# Validar los bits de la mascara
+	if [ "$a" -lt 255 ]; then
+		for octeto in $b $c $d; do
+			if [ "$octeto" -gt 0 ]; then
+				echo -e "Mascara invalida, ocupas acabar los bits del primer octeto (255.X.X.X)${nc}"
+				return 1
+			fi
+		done
+	elif [ "$b" -lt 255 ]; then
+		for octeto in $c $d; do
+			if [ "$octeto" -gt 0 ]; then
+				echo -e "Mascara invalida, ocupas acabar los bits del segundo octeto (255.255.X.X)${nc}"
+				return 1
+			fi
+		done
+	elif [ "$c" -lt 255 ]; then
+		for octeto in $d; do
+			if [ "$octeto" -gt 0 ]; then
+				echo -e "Mascara invalida, ocupas acabar los bits del tercer octeto (255.255.255.X)${nc}"
+				return 1
+			fi
+		done
+	elif [ "$d" -gt 252 ]; then
+		echo -e "Mascara invalida, no puede superar 255.255.255.252${nc}"
+		return 1
+	fi
+
+	echo -e "${nc}"
+	return 0
+}
+
+crear_Mascara(){
+	IFS='.' read -r a b c d <<< "$1"
+	if [[ "$a" -gt 1 && "$a" -le 126 ]]; then
+		return "255.0.0.0"
+	elif [[ "$a" -eq 127 ]]; then
+		return "255.0.0.0"
+	elif [[ "$a" -gt 128 && "$a" -le 191 ]]; then
+		return "255.255.0.0"
+	elif [[ "$a" -gt 192 && "$a" -le 223 ]]; then
+		return "255.255.255.0"
+	fi
+	return 0
 }
 
 verificar_Instalacion(){
@@ -76,25 +217,40 @@ configurar_DHCP(){
 	echo -e "\nConfiguracion Dinamica\n"
 
 	read -p "Nombre descriptivo del Ambito: " nombre_IP
-	until
-		read -p "Rango inicial de la IP: " ip_Inicial && \
+	until [ "$masc_valida" = "si" ]; do
+		read -p "Mascara (En blanco para usar predeterminada): " mascara
+		if [ "$mascara" != "" ]; then
+			if validar_Mascara "$mascara"; then
+				masc_valida="si"
+			fi
+		else
+			masc_valida="si"
+		fi
+	done
+	until	
+		read -p "Rango inicial de la IP: " ip_Inicial
 		validar_IP "$ip_Inicial"
 	do
 		echo -e "Intentando nuevamente..."
 	done
 
 	until  [ "$ip_Valida" = "si" ]; do
-		read -p "Rango final de la IP:" ip_Final
-		if validar_IP "$ip_Final" then
-			if [ $(echo "$ip_Final" | cut -d'.' -f4) -gt $(echo "$ip_Inicio" | cut -d'.' -f4) ] && \
-			   [ $(echo "$ip_Final" | cut -d'.' -f1-3) -e $(echo "$ip_Inicio" | cut -d'.' -f1-3) ]; then
-				ip_Valida="si"
+		read -p "Rango final de la IP: " ip_Final
+		if validar_IP "$ip_Final"; then
+			if [ 1 -gt 0 ]; then
+    				if [ "$mascara" = "" ]; then
+					if validar_IP_Masc "$ip_Inicial" "$ip_Final" "mascara"; then
+						ip_Ini_Valida="si"
+					fi
+				else
+					mascara=$(crear_Mascara ip_Inicial)
+				fi
 			else
-				echo -e "${rojo}La IP no concuerda con el rango incial${nc}"
-			fi
+    				echo -e "${rojo}La IP no concuerda con el rango inicial${nc}"
+			fi   
 		fi
 		
-		if "$ip_Valida" = "no"; then
+		if [ "$ip_Valida" = "no" ]; then
 			echo -e "Intendo nuevamente..."
 		fi
 	done
@@ -102,13 +258,13 @@ configurar_DHCP(){
 	read -p "Tiempo de la sesion: " tiempo_Sesion
 
 	until
-		read -p "Gateway: " gateway && \
+		read -p "Gateway: " gateway
 		validar_IP "$gateway"
 	do
 		echo -e "Intentado nuevamente..."
 	done
 	until	
-		read -p "DNS: " dns && \
+		read -p "DNS: " dns
 		validar_IP "$dns"
 	do
 		echo -e "Intentado nuevamente..."
@@ -116,4 +272,3 @@ configurar_DHCP(){
 }
 
 configurar_DHCP
-
