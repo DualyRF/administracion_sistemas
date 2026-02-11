@@ -354,16 +354,17 @@ configurar_DHCP(){
     echo -e "La configuracion final es: \nNombre del ambito: $scope \nMascara: $mascara \nIP inicial: $ip_Inicial \nIP final: $ip_Final \nTiempo de consesion: $lease_Time \nGateway: $gateway \nDNS primario: $dns \nDNS alternativo: $dns_Alt"
     read -p "Acepta esta configuarcion? (y/n): " opc
     if [ $opc = "y" ]; then
-    cat > /etc/dhcp/dhcpd.conf << EOF
-    subnet 192.168.1.0 netmask $mascara {
-        range $ip_Inicio $ip_Final;
-        option routers $gateway;
-        option domain-name-servers $dns, $dns_Alt;
-        default-lease-time $lease_Time;
-        max-lease-time $lease_Time;
-        authoritative;
-    }
-    EOF
+	red=$(echo "$ip_Inicial" | cut -d'.' -f1-3).0
+    cat << EOF > /etc/dhcpd.conf
+	subnet $red netmask $mascara {
+    range $ip_Inicial $ip_Final;
+    option routers $gateway;
+    option domain-name-servers $dns, $dns_Alt;
+    default-lease-time $lease_Time;
+    max-lease-time $((lease_Time * 2));
+    authoritative;
+}
+EOF
 
     systemctl restart isc-dhcp-server
     else
