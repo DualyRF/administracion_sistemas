@@ -14,7 +14,6 @@ tiempo_Sesion=""
 gateway=""
 dns=""
 mascara=""
-rango=0
 
 #Funciones
 validar_IP(){
@@ -53,6 +52,12 @@ validar_IP(){
 		return 1
 	fi
 
+	# Validar los espacios reservados para uso experimental (127.0.0.1-127.255.255.255)
+	if [[ "$a" -eq 127 ]]; then
+		echo -e "Direccion IP invalida, las direcciones del rango 127.0.0.1 al 127.255.255.255 estan reservadas para host local${nc}"
+		return 1
+	fi
+	
 	# Validar los espacios reservados para uso experimental (240.0.0.0-255.255.255.254)
 	if [[ "$a" -gt 240 && "$a" -lt 255 ]]; then
 		echo -e "Direccion IP invalida, las direcciones del rango 240.0.0.0 al 255.255.255.254 estan reservadas para usos experimentales${nc}"
@@ -68,23 +73,6 @@ validar_IP(){
 	echo -e "${nc}"
     	return 0
 }
-
-#comp_Rango(){
-#	local ip1=$1
-#	local ip2=$2
-
-#	IFS='.' read -ra octetosIni <<< "$ip1"
-#	read -ra octetosFin <<< "$ip2"
-	
-
-#	if [[ "${octetoIni[0]}" -le "${octetoFin[0]}" ]]; then
-#		if
-#	fi
-
-#	for i in {0..3} do
-		
-#	done
-#}
 
 calcular_Rango(){
 	local ip1=$1
@@ -138,13 +126,13 @@ validar_IP_Masc(){
 	local comp=""
 	local mascRang="$3"
 	local n=255
-	local count=0
+	local count=0¿
 
-	rango=$(calcular_Rango "$1" "$2")
+	local rango=$(calcular_Rango "$1" "$2")
 	mascRang=$(calcular_Bits "$mascRang")
 	mascRang=$(( (2 ** mascRang) - 2 ))
 	if [ $rango -gt $mascRang ]; then
-		echo -e "${rojo}La mascara $3 no es suficiente para el rango de IPs${nc}"
+		echo -e "${rojo}La mascara $3 no es suficiente para el rango de IPs que desea asginar${nc}"
 		return 1
 	fi
 	return 0
@@ -211,17 +199,36 @@ validar_Mascara(){
 }
 
 crear_Mascara(){
-	IFS='.' read -r a b c d <<< "$1"
-	if [[ "$a" -gt 1 && "$a" -le 126 ]]; then
-		return "255.0.0.0"
-	elif [[ "$a" -eq 127 ]]; then
-		return "255.0.0.0"
-	elif [[ "$a" -gt 128 && "$a" -le 191 ]]; then
-		return "255.255.0.0"
-	elif [[ "$a" -gt 192 && "$a" -le 223 ]]; then
-		return "255.255.255.0"
-	fi
-	return 0
+	local rango=$(calcular_Rango "$1" "$2")
+	local n=0
+	local cont=0
+	local masc=255.255.255.255
+	
+	for i in {1..32}; do
+		if [[ $n -ge $(( rango + 2 )) ]]; then
+			break;
+		else
+			n=$(( 2 ** i ))
+			cont=$(( cont + 1 ))
+		fi
+	done
+	IFS='.' read -r -a a_masc <<< "$masc"
+	for ((i=${#a_masc[@]}-1; i>=0; i--)); do
+		octeto=$a_masc[i]
+
+		for ((p=n; p>=0; p--)); do
+			echo "$p"
+			if [[ $octeto -eq 0  || $n -eq 0 ]]; then
+				n=$p
+				break;
+			else
+				octeto=$(( octeto - (2 ** p )))
+			fi
+		done
+		a_masc[i]=$octeto
+		echo -e "$octeto"
+	done
+	echo $masc
 }
 
 verificar_Instalacion(){
@@ -245,7 +252,7 @@ instalar_DHCP(){
 }
 
 configurar_DHCP(){
-	# Entregable 2
+	# ------------------------------------------- Validaciones -------------------------------------------
 	local ip_Valida="no"
 
 	echo -e "\nConfiguracion Dinamica\n"
@@ -261,23 +268,36 @@ configurar_DHCP(){
 			masc_valida="si"
 		fi
 	done
-	until	
-		read -p "Rango inicial de la IP: " ip_Inicial
-		validar_IP "$ip_Inicial"
-	do
-		echo -e "Intentando nuevamente..."
+	until [ "$ip_Valida" = "si" ]; do
+		read -p "Rango inicial de la IP (La primera IP se usara para asignarla al servidor): " ip_Inicial
+		ip_Res=$(echo "$ip_Inicial" | cut -d'.' -f4)
+		if [ $ip_Res -lt 255 ]; then
+			ip_Res=$(( ip_Res + 1 ))
+			ip_Inicial=$(echo "$ip_Inicial" | cut -d'.' -f1-3)
+			ip_Inicial="$ip_Inicial.$ip_Res"
+			if validar_IP "$ip_Inicial"; then
+				ip_Valida="si"
+			fi
+		else
+			echo -e "No use X.X.X.225 como ultimo octeto por temas de rendimiento"
+			echo -e "Intentando nuevamente..."	
+		fi
 	done
 
-	until  [ "$ip_Valida" = "si" ]; do
+	ip_Valida="no"
+
+	until [ "$ip_Valida" = "si" ]; do
 		read -p "Rango final de la IP: " ip_Final
 		if validar_IP "$ip_Final"; then
 			if [ 1 -gt 0 ]; then
-    				if [ "$mascara" != "" ]; then
+    			if [ "$mascara" != "" ]; then
 					if validar_IP_Masc "$ip_Inicial" "$ip_Final" "$mascara"; then
-						ip_Ini_Valida="si"
+						ip_Valida="si"
 					fi
 				else
-					mascara=$(crear_Mascara ip_Inicial)
+					mascara=$(crear_Mascara "$ip_Inicial" "$ip_Final")
+					echo -e "$mascara"
+					ip_Valida="si"
 				fi
 			else
     				echo -e "${rojo}La IP no concuerda con el rango inicial${nc}"
@@ -289,7 +309,7 @@ configurar_DHCP(){
 		fi
 	done
 
-	read -p "Tiempo de la sesion: " tiempo_Sesion
+	read -p "Tiempo de la sesion (segundos): " tiempo_Sesion
 
 	until
 		read -p "Gateway: " gateway
