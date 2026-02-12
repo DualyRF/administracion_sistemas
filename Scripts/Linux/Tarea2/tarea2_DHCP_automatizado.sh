@@ -165,9 +165,9 @@ validar_Mascara(){
 	fi
 	
 	# Validar que sean 255, 252, 248, 240, 224, 192, 128 y 0
-	for octeto in $a $b $c $d; do
-		for i in {0..7}
-	done
+	#for octeto in $a $b $c $d; do
+		
+	#done
 	
 	# Validar que no tenga 0 al izquierda y que no pasen los rangos de 8 bits
 	for octeto in $a $b $c $d; do
@@ -442,9 +442,62 @@ verificar_Instalacion(){
 }
 
 instalar_DHCP(){
-    # Instalar DHCP
-	sudo zypper --non-interactive install dhcp-server
-	echo -e "${verde}DHCP esta instalado, continuando con la configuracion...${nc}"
+    echo -e "${verde}=== Instalación y Configuración de DHCP Server ===${nc}"
+    echo ""
+    
+    # 1. Verificar si DHCP ya está instalado
+    if rpm -q dhcp-server &>/dev/null; then
+        echo -e "${azul}DHCP server ya está instalado${nc}"
+    else
+        echo -e "${amarillo}DHCP server no está instalado, iniciando instalación...${nc}"
+        
+        # Instalar con barra de progreso
+        sudo zypper --non-interactive --quiet install dhcp-server > /dev/null 2>&1 &
+        pid=$!
+        
+        # Barra de progreso
+        width=40
+        progress=0
+        
+        while kill -0 $pid 2>/dev/null; do
+            filled=$((progress % (width + 1)))
+            empty=$((width - filled))
+            
+            printf "\r["
+            printf "%${filled}s" | tr ' ' '█'
+            printf "%${empty}s" | tr ' ' '░'
+            printf "] %d%%" $((filled * 100 / width))
+            
+            progress=$((progress + 2))
+            sleep 0.1
+        done
+        
+        printf "\r["
+        printf "%${width}s" | tr ' ' '█'
+        printf "] 100%%\n"
+        
+        echo -e "${verde}✓ DHCP server instalado correctamente${nc}"
+    fi
+    
+    echo ""
+    
+    # 2. Verificar si existe configuración previa
+    if [ -f /etc/dhcpd.conf ] && [ -s /etc/dhcpd.conf ]; then
+        echo -e "${amarillo}Se detectó una configuración previa de DHCP${nc}"
+        echo ""
+        read -p "¿Deseas sobreescribir la configuración existente? (y/n): " sobreescribir
+        
+        if [[ "$sobreescribir" =~ ^[Yy]$ ]]; then
+            echo -e "${verde}Continuando con el script...${nc}"
+			configurar_DHCP
+            return 0
+        else
+			echo -e "${amarillo}Volviendo..."
+			return 0
+		fi
+    fi
+    
+    echo ""
 }
 
 configurar_DHCP(){
