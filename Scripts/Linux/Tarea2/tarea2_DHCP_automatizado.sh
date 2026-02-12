@@ -13,11 +13,14 @@ nc='\033[0m'
 
 ayuda() {
     # Todas las opciones
-    echo "Uso del scrpit: $0"
+    echo "Uso del script: $0"
     echo "Opciones:"
     echo -e "  ${azul}-v, --verify       ${nc}Verifica si esta instalada la paqueteria DHCP"
-    echo -e "  ${azul}-i, --install      ${nc}Instala la paquteria DHCP"
+    echo -e "  ${azul}-i, --install      ${nc}Instala la paqueteria DHCP"
     echo -e "  ${azul}-c, --configurar   ${nc}Configurar servidor DHCP"
+    echo -e "  ${azul}-m, --monitor      ${nc}Monitorear clientes DHCP"
+    echo -e "  ${azul}-r, --restart      ${nc}Reiniciar servidor DHCP"
+	echo -e "  ${azul}-s, --status		 ${nc}Status del servidor DHCP"
     echo -e "  ${azul}-?, --help         ${nc}Muestra esta ayuda/menu"
 }
 
@@ -241,6 +244,151 @@ crear_Mascara(){
     echo "$octeto"
 }
 
+monitorear_Clientes(){
+    local archivo_leases="/var/lib/dhcp/db/dhcpd.leases"
+    local opc=""
+    
+    # Verificar si existe el archivo de leases
+    if [ ! -f "$archivo_leases" ]; then
+        echo -e "${rojo}Error: No se encontró el archivo de leases${nc}"
+        echo -e "${amarillo}Asegúrate de que el servidor DHCP esté funcionando${nc}"
+        return 1
+    fi
+    
+    # Verificar si el servicio está activo
+    if ! systemctl is-active --quiet dhcpd; then
+        echo -e "${rojo}El servicio DHCP no está activo${nc}"
+        read -p "¿Desea iniciarlo? (y/n): " opc
+        if [[ "$opc" = "y" ]]; then
+            sudo systemctl start dhcpd
+        else
+            return 1
+        fi
+    fi
+    
+    echo -e "\n${azul}========== MONITOREO DE CLIENTES DHCP ==========${nc}\n"
+    
+    # Menú de opciones
+    echo -e "${amarillo}Seleccione una opción:${nc}"
+    echo -e "  ${verde}1.${nc} Ver todos los leases (histórico)"
+    echo -e "  ${verde}2.${nc} Ver solo leases activos"
+    echo -e "  ${verde}3.${nc} Monitoreo en tiempo real"
+    echo -e "  ${verde}4.${nc} Ver estadísticas del servidor"
+    echo -e "  ${verde}5.${nc} Exportar reporte a archivo"
+    read -p "Opción: " opc
+    
+    case $opc in
+        1)
+            echo -e "\n${azul}=== TODOS LOS LEASES ===${nc}\n"
+            cat "$archivo_leases"
+            ;;
+        2)
+            echo -e "\n${azul}=== LEASES ACTIVOS ===${nc}\n"
+            echo -e "${verde}IP Address\t\tMAC Address\t\tHostname\t\tExpira${nc}"
+            echo -e "-------------------------------------------------------------------------------------"
+            
+            awk '
+            /^lease/ {ip=$2; active=0}
+            /hardware ethernet/ {mac=$3; gsub(";","",mac)}
+            /client-hostname/ {host=$2; gsub(/[";]/,"",host)}
+            /binding state active/ {active=1}
+            /ends/ {
+                if (active) {
+                    expires=$3" "$4
+                    gsub(";","",expires)
+                    printf "%-20s %-20s %-20s %s\n", ip, mac, host, expires
+                }
+            }
+            ' "$archivo_leases" | sort -u
+            ;;
+        3)
+            echo -e "\n${azul}=== MONITOREO EN TIEMPO REAL (Ctrl+C para salir) ===${nc}\n"
+            tail -f "$archivo_leases"
+            ;;
+        4)
+            echo -e "\n${azul}=== ESTADÍSTICAS DEL SERVIDOR ===${nc}\n"
+            
+            total=$(grep -c "^lease" "$archivo_leases")
+            activos=$(grep -c "binding state active" "$archivo_leases")
+            
+            echo -e "${verde}Total de leases registrados:${nc} $total"
+            echo -e "${verde}Leases activos:${nc} $activos"
+            echo -e "\n${amarillo}Estado del servicio:${nc}"
+            sudo systemctl status dhcpd --no-pager
+            ;;
+        5)
+            local archivo_salida="reporte_dhcp_$(date +%Y%m%d_%H%M%S).txt"
+            echo -e "\n${azul}=== GENERANDO REPORTE ===${nc}\n"
+            
+            {
+                echo "REPORTE DHCP - $(date)"
+                echo "================================"
+                echo ""
+                echo "CLIENTES ACTIVOS:"
+                echo "IP Address          MAC Address          Hostname             Expira"
+                echo "-------------------------------------------------------------------------------------"
+                
+                awk '
+                /^lease/ {ip=$2; active=0}
+                /hardware ethernet/ {mac=$3; gsub(";","",mac)}
+                /client-hostname/ {host=$2; gsub(/[";]/,"",host)}
+                /binding state active/ {active=1}
+                /ends/ {
+                    if (active) {
+                        expires=$3" "$4
+                        gsub(";","",expires)
+                        printf "%-20s %-20s %-20s %s\n", ip, mac, host, expires
+                    }
+                }
+                ' "$archivo_leases" | sort -u
+                
+                echo ""
+                echo "================================"
+                echo "ESTADÍSTICAS:"
+                echo "Total leases: $(grep -c "^lease" "$archivo_leases")"
+                echo "Leases activos: $(grep -c "binding state active" "$archivo_leases")"
+            } > "$archivo_salida"
+            
+            echo -e "${verde}Reporte guardado en: $archivo_salida${nc}"
+            cat "$archivo_salida"
+            ;;
+        *)
+            echo -e "${rojo}Opción inválida${nc}"
+            ;;
+    esac
+    
+    echo -e "\n${azul}===============================================${nc}\n"
+}
+
+reiniciar_DHCP(){
+    echo -e "${amarillo}Reiniciando servidor DHCP...${nc}"
+    
+    if ! systemctl is-active --quiet dhcpd; then
+        echo -e "${rojo}El servicio DHCP no está activo${nc}"
+        read -p "¿Desea iniciarlo en lugar de reiniciarlo? (y/n): " opc
+        if [[ "$opc" = "y" ]]; then
+            sudo systemctl start dhcpd
+        else
+            return 1
+        fi
+    else
+        sudo systemctl restart dhcpd
+    fi
+    
+    if systemctl is-active --quiet dhcpd; then
+        echo -e "${verde}Servidor DHCP reiniciado correctamente${nc}"
+        sudo systemctl status dhcpd --no-pager
+    else
+        echo -e "${rojo}Error al reiniciar el servidor DHCP${nc}"
+        echo -e "${amarillo}Ejecute: sudo journalctl -xeu dhcpd.service${nc}"
+    fi
+}
+
+ver_Estado(){
+    echo -e "${azul}=== ESTADO DEL SERVIDOR DHCP ===${nc}\n"
+    sudo systemctl status dhcpd --no-pager
+}
+
 verificar_Instalacion(){
 	# Comprobar si esta instalada la paqueteria de DHCP
 	local opc
@@ -448,5 +596,8 @@ case $1 in
     -v | --verify) verificar_Instalacion ;;
     -i | --install) instalar_DHCP ;;
     -c | --config) configurar_DHCP ;;
+    -m | --monitor) monitorear_Clientes ;;
+    -r | --restart) reiniciar_DHCP ;;
+	-s | --status) ver_Estado ;;
     -? | --help) ayuda ;;
 esac
