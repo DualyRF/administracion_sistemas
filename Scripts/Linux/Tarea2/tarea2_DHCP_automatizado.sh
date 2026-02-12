@@ -17,10 +17,10 @@ ayuda() {
     echo "Opciones:"
     echo -e "  ${azul}-v, --verify       ${nc}Verifica si esta instalada la paqueteria DHCP"
     echo -e "  ${azul}-i, --install      ${nc}Instala la paqueteria DHCP"
-    echo -e "  ${azul}-c, --configurar   ${nc}Configurar servidor DHCP"
     echo -e "  ${azul}-m, --monitor      ${nc}Monitorear clientes DHCP"
     echo -e "  ${azul}-r, --restart      ${nc}Reiniciar servidor DHCP"
 	echo -e "  ${azul}-s, --status		 ${nc}Status del servidor DHCP"
+    echo -e "  ${azul}-c, --configurar   ${nc}Configurar servidor DHCP"
 	echo -e "  ${azul}-sh, --showConfig  ${nc}Ver configuración actual"
     echo -e "  ${azul}-?, --help         ${nc}Muestra esta ayuda/menu"
 }
@@ -492,7 +492,7 @@ instalar_DHCP(){
 			configurar_DHCP
             return 0
         else
-			echo -e "${amarillo}Volviendo..."
+			echo -e "${amarillo}Volviendo...${nc}"
 			return 0
 		fi
     fi
@@ -563,11 +563,18 @@ configurar_DHCP(){
 
 	read -p "Tiempo de la sesion (segundos): " lease_Time
 
-	until
-		read -p "Gateway: " gateway
-		validar_IP "$gateway" 
-	do
-		echo -e "Intentado nuevamente..."
+	comp="no"
+	until [[ "$comp" = "si" ]]; do
+		read -p "Gateway (puede quedar vacio para red aislada): " gateway
+		if [ "$gateway" = "" ]; then
+			comp="si"
+			echo -e "${amarillo}Sin gateway - los clientes no tendran acceso a internet${nc}"
+		elif validar_IP "$gateway"; then
+			comp="si"
+		fi
+		if [ "$comp" = "no" ]; then
+			echo -e "Intentando nuevamente..."
+		fi
 	done
 
 	comp="no"
@@ -575,26 +582,31 @@ configurar_DHCP(){
 		read -p "DNS principal (puede quedar vacio): " dns
 		if [ "$dns" = "" ]; then
 			comp="si"
+			dns_Alt=""
 		elif validar_IP "$dns"; then
 			comp="si"
 		fi
 		if [ "$comp" = "no" ]; then
-			echo -e "Intentado nuevamente..."
+			echo -e "Intentando nuevamente..."
 		fi
 	done
 
-	comp="no"
-	until [[ "$comp" = "si" ]]; do
-		read -p "DNS alternativo (puede quedar vacio): " dns_Alt
-		if [ "$dns_Alt" = "" ]; then
-			comp="si"
-		elif validar_IP "$dns_Alt"; then
-			comp="si"
-		fi
-		if [ "$comp" = "no" ]; then
-			echo -e "Intentado nuevamente..."
-		fi
-	done
+	if [ -n "$dns" ]; then
+		comp="no"
+		until [[ "$comp" = "si" ]]; do
+			read -p "DNS alternativo (puede quedar vacio): " dns_Alt
+			if [ "$dns_Alt" = "" ]; then
+				comp="si"
+			elif validar_IP "$dns_Alt"; then
+				comp="si"
+			fi
+			if [ "$comp" = "no" ]; then
+				echo -e "Intentando nuevamente..."
+			fi
+		done
+	else
+		dns_Alt=""  # Asegurar que esté vacío si no hay DNS principal
+	fi
 
 	# Detectar interfaz de red automáticamente o pedir al usuario
 	echo -e "\n${amarillo}Interfaces de red disponibles:${nc}"
@@ -614,22 +626,22 @@ configurar_DHCP(){
 	
     read -p "Acepta esta configuracion? (y/n): " opc
     if [ "$opc" = "y" ]; then
-	# Calcular la dirección de red correctamente
-	IFS='.' read -r a b c d <<< "$ip_Inicial"
-	IFS='.' read -r ma mb mc md <<< "$mascara"
-	
-	# AND bit a bit entre IP y máscara para obtener la red
-	red="$((a & ma)).$((b & mb)).$((c & mc)).$((d & md))"
-	
-	# Calcular broadcast
-	broadcast="$((a | (255 - ma))).$((b | (255 - mb))).$((c | (255 - mc))).$((d | (255 - md)))"
-	
-	echo -e "${amarillo}Red calculada: $red${nc}"
-	echo -e "${amarillo}Broadcast calculado: $broadcast${nc}"
+		# Calcular la dirección de red correctamente
+		IFS='.' read -r a b c d <<< "$ip_Inicial"
+		IFS='.' read -r ma mb mc md <<< "$mascara"
+		
+		# AND bit a bit entre IP y máscara para obtener la red
+		red="$((a & ma)).$((b & mb)).$((c & mc)).$((d & md))"
+		
+		# Calcular broadcast
+		broadcast="$((a | (255 - ma))).$((b | (255 - mb))).$((c | (255 - mc))).$((d | (255 - md)))"
+		
+		echo -e "${amarillo}Red calculada: $red${nc}"
+		echo -e "${amarillo}Broadcast calculado: $broadcast${nc}"
 	
 	# Crear configuración DHCP
 	echo -e "${amarillo}Creando configuración DHCP...${nc}"
-	sudo bash -c "cat > /etc/dhcpd.conf" << EOF
+sudo bash -c "cat > /etc/dhcpd.conf" << EOF
 # Configuracion DHCP - $scope
 default-lease-time $lease_Time;
 max-lease-time $((lease_Time * 2));
@@ -637,11 +649,13 @@ authoritative;
 
 subnet $red netmask $mascara {
     range $ip_Inicial $ip_Final;
-    option routers $gateway;
+$(if [ -n "$gateway" ]; then
+    echo "    option routers $gateway;"
+fi)
     option subnet-mask $mascara;
-$(if [ "$dns" != "" ] && [ "$dns_Alt" != "" ]; then
+$(if [ -n "$dns" ] && [ -n "$dns_Alt" ]; then
     echo "    option domain-name-servers $dns, $dns_Alt;"
-elif [ "$dns" != "" ]; then
+elif [ -n "$dns" ]; then
     echo "    option domain-name-servers $dns;"
 fi)
     option broadcast-address $broadcast;
@@ -689,10 +703,10 @@ EOF
 case $1 in
     -v | --verify) verificar_Instalacion ;;
     -i | --install) instalar_DHCP ;;
-    -c | --config) configurar_DHCP ;;
     -m | --monitor) monitorear_Clientes ;;
     -r | --restart) reiniciar_DHCP ;;
 	-s | --status) ver_Estado ;;
+    -c | --config) configurar_DHCP ;;
 	-sc | --showConfig) ver_Configuracion ;;
     -? | --help) ayuda ;;
 esac
