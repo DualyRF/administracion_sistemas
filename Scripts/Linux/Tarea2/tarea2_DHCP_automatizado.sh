@@ -289,6 +289,8 @@ configurar_DHCP(){
 			ip_Res=$(( ip_Res + 1 ))
 			ip_Inicial=$(echo "$ip_Inicial" | cut -d'.' -f1-3)
 			ip_Inicial="$ip_Inicial.$ip_Res"
+			ip_Servidor=$(echo "$ip_Inicial" | cut -d'.' -f1-3)
+			ip_Servidor="$ip_Servidor.$ip_Res"
 			if validar_IP "$ip_Inicial"; then
 				ip_Valida="si"
 			fi
@@ -330,45 +332,113 @@ configurar_DHCP(){
 	do
 		echo -e "Intentado nuevamente..."
 	done
+
+	comp="no"
 	until [[ "$comp" = "si" ]]; do
 		read -p "DNS principal (puede quedar vacio): " dns
-        if [ "$dns" = "" ]; then
-            dns=8.8.8.8
-		    break;
-        else   
-            validar_IP "dns"
-        fi
-		echo -e "Intentado nuevamente..."
-	done
-    until [[ "$comp" = "si" ]]; do
-		read -p "DNS alternativo (puede quedar vacio): " dns_Alt
-        if [ "$dns_Alt" = "" ]; then
-            dns_Alt=8.8.8.4
-		    break;
-        else   
-            validar_IP "dns_Alt"
-        fi
-		echo -e "Intentado nuevamente..."
+		if [ "$dns" = "" ]; then
+			comp="si"
+		elif validar_IP "$dns"; then
+			comp="si"
+		fi
+		if [ "$comp" = "no" ]; then
+			echo -e "Intentado nuevamente..."
+		fi
 	done
 
-    echo -e "La configuracion final es: \nNombre del ambito: $scope \nMascara: $mascara \nIP inicial: $ip_Inicial \nIP final: $ip_Final \nTiempo de consesion: $lease_Time \nGateway: $gateway \nDNS primario: $dns \nDNS alternativo: $dns_Alt"
-    read -p "Acepta esta configuarcion? (y/n): " opc
-    if [ $opc = "y" ]; then
-	red=$(echo "$ip_Inicial" | cut -d'.' -f1-3).0
-    cat << EOF > /etc/dhcpd.conf
-	subnet $red netmask $mascara {
+	comp="no"
+	until [[ "$comp" = "si" ]]; do
+		read -p "DNS alternativo (puede quedar vacio): " dns_Alt
+		if [ "$dns_Alt" = "" ]; then
+			comp="si"
+		elif validar_IP "$dns_Alt"; then
+			comp="si"
+		fi
+		if [ "$comp" = "no" ]; then
+			echo -e "Intentado nuevamente..."
+		fi
+	done
+
+	# Detectar interfaz de red automáticamente o pedir al usuario
+	echo -e "\n${amarillo}Interfaces de red disponibles:${nc}"
+	ip -br link show | grep -v "lo" | awk '{print $1}'
+	read -p "Ingrese la interfaz de red a usar (ej: enp0s8): " interfaz
+
+    echo -e "\n${azul}La configuracion final es:${nc}"
+	echo -e "Nombre del ambito: ${verde}$scope${nc}"
+	echo -e "Mascara: ${verde}$mascara${nc}"
+	echo -e "IP inicial: ${verde}$ip_Inicial${nc}"
+	echo -e "IP final: ${verde}$ip_Final${nc}"
+	echo -e "Tiempo de consesion: ${verde}$lease_Time${nc}"
+	echo -e "Gateway: ${verde}$gateway${nc}"
+	echo -e "DNS primario: ${verde}$dns${nc}"
+	echo -e "DNS alternativo: ${verde}$dns_Alt${nc}"
+	echo -e "Interfaz: ${verde}$interfaz${nc}\n"
+	
+    read -p "Acepta esta configuracion? (y/n): " opc
+    if [ "$opc" = "y" ]; then
+		red=$(echo "$ip_Inicial" | cut -d'.' -f1-3).0
+		
+		# Calcular broadcast
+		IFS='.' read -r a b c d <<< "$red"
+		IFS='.' read -r ma mb mc md <<< "$mascara"
+		broadcast="$((a | (255 - ma))).$((b | (255 - mb))).$((c | (255 - mc))).$((d | (255 - md)))"
+		
+		# Crear configuración DHCP
+	echo -e "${amarillo}Creando configuración DHCP...${nc}"
+	
+sudo bash -c "cat > /etc/dhcpd.conf" << EOF
+# Configuracion DHCP - $scope
+default-lease-time $lease_Time;
+max-lease-time $((lease_Time * 2));
+authoritative;
+
+subnet $red netmask $mascara {
     range $ip_Inicial $ip_Final;
     option routers $gateway;
-    option domain-name-servers $dns, $dns_Alt;
-    default-lease-time $lease_Time;
-    max-lease-time $((lease_Time * 2));
-    authoritative;
+    option subnet-mask $mascara;
+$(if [ "$dns" != "" ] && [ "$dns_Alt" != "" ]; then
+    echo "    option domain-name-servers $dns, $dns_Alt;"
+elif [ "$dns" != "" ]; then
+    echo "    option domain-name-servers $dns;"
+fi)
+    option broadcast-address $broadcast;
 }
 EOF
 
-    systemctl restart isc-dhcp-server
+		# Configurar interfaz
+		interfaz="enp0s8"
+		echo -e "${amarillo}Configurando interfaz de red...${nc}"
+		sudo bash -c "echo 'DHCPD_INTERFACE=\"$interfaz\"' > /etc/sysconfig/dhcpd"
+		
+		echo -e "${amarillo}Configurando IP estática $ip_Servidor en la interfaz $interfaz...${nc}"
+		sudo ip addr flush dev $interfaz
+		sudo ip addr add $ip_Servidor/$( calcular_Bits "$mascara" ) dev $interfaz
+		sudo ip link set $interfaz up
+
+sudo bash -c "cat > /etc/sysconfig/network/ifcfg-$interfaz" << EOF
+BOOTPROTO='static'
+STARTMODE='auto'
+IPADDR='$ip_Servidor'
+NETMASK='$mascara'
+EOF
+
+		# Reiniciar servicio
+		echo -e "${amarillo}Reiniciando servicio DHCP...${nc}"
+		sudo systemctl restart dhcpd
+		
+		echo -e "${verde}IP estática $ip_Servidor configurada en $interfaz${nc}"
+
+		# Verificar estado
+		if sudo systemctl is-active --quiet dhcpd; then
+			echo -e "${verde}¡Servidor DHCP configurado y funcionando correctamente!${nc}"
+			sudo systemctl status dhcpd --no-pager
+		else
+			echo -e "${rojo}Error al iniciar el servicio DHCP${nc}"
+			echo -e "${amarillo}Ejecute: sudo journalctl -xeu dhcpd.service${nc}"
+		fi
     else
-        echo -e "Volviendo a configfurar..."
+        echo -e "${amarillo}Volviendo a configurar...${nc}"
         configurar_DHCP
     fi
 }
