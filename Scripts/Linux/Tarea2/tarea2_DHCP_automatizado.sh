@@ -21,6 +21,7 @@ ayuda() {
     echo -e "  ${azul}-m, --monitor      ${nc}Monitorear clientes DHCP"
     echo -e "  ${azul}-r, --restart      ${nc}Reiniciar servidor DHCP"
 	echo -e "  ${azul}-s, --status		 ${nc}Status del servidor DHCP"
+	echo -e "  ${azul}-sh, --showConfig  ${nc}Ver configuración actual"
     echo -e "  ${azul}-?, --help         ${nc}Muestra esta ayuda/menu"
 }
 
@@ -91,7 +92,7 @@ validar_IP_Masc(){
 validar_IP(){
 	# Variable
 	local ip="$1"
-	echo -e "${rojo}"
+	echo -en "${rojo}"
 
 	# Validar formato X.X.X.X solo con numeros
 	if ! [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
@@ -142,38 +143,43 @@ validar_IP(){
 		return 1
 	fi
 
-	echo -e "${nc}"
+	echo -en "${nc}"
     	return 0
 }
 
 validar_Mascara(){
 	local masc="$1"
-	echo -e "${rojo}"
+	echo -en "${rojo}"
 	
 	# Validar formato X.X.X.X solo con numeros
-    	if ! [[ "$masc" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-    		echo -e "Mascara invalida, tiene que contener un formato X.X.X.X unicamente con numeros positivos${nc}"
-        	return 1
-   	fi
+	if ! [[ "$masc" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+		echo -e "Mascara invalida, tiene que contener un formato X.X.X.X unicamente con numeros positivos${nc}"
+		return 1
+	fi
 
 	# Validar cada octeto entre 0 y 255
-    	IFS='.' read -r a b c d <<< "$masc"
+	IFS='.' read -r a b c d <<< "$masc"
 	if [ "$a" -eq 0 ]; then
 		echo -e "Mascara invalida, no puede ser 0.X.X.X${nc}"
 		return 1
 	fi
 	
+	# Validar que sean 255, 252, 248, 240, 224, 192, 128 y 0
+	for octeto in $a $b $c $d; do
+		for i in {0..7}
+	done
+	
 	# Validar que no tenga 0 al izquierda y que no pasen los rangos de 8 bits
-    	for octeto in $a $b $c $d; do
+	for octeto in $a $b $c $d; do
 		if [[ "$octeto" =~ ^0[0-9]+ ]]; then
 			echo -e "Mascara invalida, no se pueden poner 0 a la izquierda a menos que sea 0${nc}"
 			return 1
 		fi
-        	if [[ "$octeto" -lt 0 || "$octeto" -gt 255 ]]; then
-            		echo -e "Mascara invalida, no puede ser mayor a 255 ni menor a 0${nc}"
-            		return 1
-        	fi
-    	done
+		if [[ "$octeto" -lt 0 || "$octeto" -gt 255 ]]; then
+				echo -e "Mascara invalida, no puede ser mayor a 255 ni menor a 0${nc}"
+				return 1
+		fi
+	done
 
 	# Validar los bits de la mascara
 	if [ "$a" -lt 255 ]; then
@@ -202,7 +208,7 @@ validar_Mascara(){
 		return 1
 	fi
 
-	echo -e "${nc}"
+	echo -en "${nc}"
 	return 0
 }
 
@@ -384,6 +390,35 @@ reiniciar_DHCP(){
     fi
 }
 
+ver_Configuracion(){
+    local config_file="/etc/dhcpd.conf"
+    local sysconfig="/etc/sysconfig/dhcpd"
+    
+    if [ ! -f "$config_file" ]; then
+        echo -e "${rojo}No se encontró el archivo de configuración${nc}"
+        echo -e "${amarillo}Parece que el servidor DHCP no está configurado aún${nc}"
+        return 1
+    fi
+    
+    echo -e "\n${azul}========== CONFIGURACIÓN ACTUAL DEL SERVIDOR DHCP ==========${nc}\n"
+    
+    echo -e "${verde}Archivo de configuración principal:${nc} $config_file"
+    echo -e "${amarillo}-----------------------------------------------------------${nc}"
+    cat "$config_file"
+    echo -e "${amarillo}-----------------------------------------------------------${nc}\n"
+    
+    if [ -f "$sysconfig" ]; then
+        echo -e "${verde}Interfaz configurada:${nc}"
+        cat "$sysconfig"
+        echo ""
+    fi
+    
+    echo -e "${verde}Estado del servicio:${nc}"
+    sudo systemctl status dhcpd --no-pager | head -n 5
+    
+    echo -e "\n${azul}============================================================${nc}\n"
+}
+
 ver_Estado(){
     echo -e "${azul}=== ESTADO DEL SERVIDOR DHCP ===${nc}\n"
     sudo systemctl status dhcpd --no-pager
@@ -401,6 +436,8 @@ verificar_Instalacion(){
             instalar_DHCP
 			exit
 		fi
+	else
+		echo -e "${verde}DHCP esta instalado${nc}"
 	fi
 }
 
@@ -429,16 +466,15 @@ configurar_DHCP(){
 			masc_valida="si"
 		fi
 	done
-    
+
 	until [ "$ip_Valida" = "si" ]; do
 		read -p "Rango inicial de la IP (La primera IP se usara para asignarla al servidor): " ip_Inicial
 		ip_Res=$(echo "$ip_Inicial" | cut -d'.' -f4)
 		if [ $ip_Res -ne 255 ]; then
+			ip_Servidor="$ip_Inicial"
 			ip_Res=$(( ip_Res + 1 ))
 			ip_Inicial=$(echo "$ip_Inicial" | cut -d'.' -f1-3)
 			ip_Inicial="$ip_Inicial.$ip_Res"
-			ip_Servidor=$(echo "$ip_Inicial" | cut -d'.' -f1-3)
-			ip_Servidor="$ip_Servidor.$ip_Res"
 			if validar_IP "$ip_Inicial"; then
 				ip_Valida="si"
 			fi
@@ -453,7 +489,7 @@ configurar_DHCP(){
 	until [ "$ip_Valida" = "si" ]; do
 		read -p "Rango final de la IP: " ip_Final
 		if validar_IP "$ip_Final"; then
-			if [ 1 -gt 0 ]; then
+			if [ $(calcular_Rango "$ip_Inicial" "$ip_Final") -gt 2 ]; then
     			if [ "$uso_Mas" = "si" ]; then
 					if validar_IP_Masc "$ip_Inicial" "$ip_Final" "$mascara"; then
 						ip_Valida="si"
@@ -525,17 +561,22 @@ configurar_DHCP(){
 	
     read -p "Acepta esta configuracion? (y/n): " opc
     if [ "$opc" = "y" ]; then
-		red=$(echo "$ip_Inicial" | cut -d'.' -f1-3).0
-		
-		# Calcular broadcast
-		IFS='.' read -r a b c d <<< "$red"
-		IFS='.' read -r ma mb mc md <<< "$mascara"
-		broadcast="$((a | (255 - ma))).$((b | (255 - mb))).$((c | (255 - mc))).$((d | (255 - md)))"
-		
-		# Crear configuración DHCP
-	echo -e "${amarillo}Creando configuración DHCP...${nc}"
+	# Calcular la dirección de red correctamente
+	IFS='.' read -r a b c d <<< "$ip_Inicial"
+	IFS='.' read -r ma mb mc md <<< "$mascara"
 	
-sudo bash -c "cat > /etc/dhcpd.conf" << EOF
+	# AND bit a bit entre IP y máscara para obtener la red
+	red="$((a & ma)).$((b & mb)).$((c & mc)).$((d & md))"
+	
+	# Calcular broadcast
+	broadcast="$((a | (255 - ma))).$((b | (255 - mb))).$((c | (255 - mc))).$((d | (255 - md)))"
+	
+	echo -e "${amarillo}Red calculada: $red${nc}"
+	echo -e "${amarillo}Broadcast calculado: $broadcast${nc}"
+	
+	# Crear configuración DHCP
+	echo -e "${amarillo}Creando configuración DHCP...${nc}"
+	sudo bash -c "cat > /etc/dhcpd.conf" << EOF
 # Configuracion DHCP - $scope
 default-lease-time $lease_Time;
 max-lease-time $((lease_Time * 2));
@@ -599,5 +640,6 @@ case $1 in
     -m | --monitor) monitorear_Clientes ;;
     -r | --restart) reiniciar_DHCP ;;
 	-s | --status) ver_Estado ;;
+	-sc | --showConfig) ver_Configuracion ;;
     -? | --help) ayuda ;;
 esac
