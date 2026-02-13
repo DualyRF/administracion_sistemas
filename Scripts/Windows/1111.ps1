@@ -8,7 +8,7 @@ $mascara = Read-Host "Mascara (En blanco para 255.255.255.0)"
 if ([string]::IsNullOrWhiteSpace($mascara)) {
     $mascara = "255.255.255.0"
 }
-
+    
 # IP Inicial
 $ipInicial = Read-Host "Rango inicial de la IP (La primera IP se usara para el servidor)"
 $octetos = $ipInicial -split '\.'

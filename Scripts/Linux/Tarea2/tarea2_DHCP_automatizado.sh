@@ -446,38 +446,28 @@ instalar_DHCP(){
     echo ""
     
     # 1. Verificar si DHCP ya está instalado
-    if rpm -q dhcp-server &>/dev/null; then
-        echo -e "${azul}DHCP server ya está instalado${nc}"
-    else
-        echo -e "${amarillo}DHCP server no está instalado, iniciando instalación...${nc}"
-        
-        # Instalar con barra de progreso
-        sudo zypper --non-interactive --quiet install dhcp-server > /dev/null 2>&1 &
-        pid=$!
-        
-        # Barra de progreso
-        width=40
-        progress=0
-        
-        while kill -0 $pid 2>/dev/null; do
-            filled=$((progress % (width + 1)))
-            empty=$((width - filled))
-            
-            printf "\r["
-            printf "%${filled}s" | tr ' ' '█'
-            printf "%${empty}s" | tr ' ' '░'
-            printf "] %d%%" $((filled * 100 / width))
-            
-            progress=$((progress + 2))
-            sleep 0.1
-        done
-        
-        printf "\r["
-        printf "%${width}s" | tr ' ' '█'
-        printf "] 100%%\n"
-        
-        echo -e "${verde}✓ DHCP server instalado correctamente${nc}"
-    fi
+	if rpm -q dhcp-server &>/dev/null; then
+		echo -e "${azul}DHCP server ya está instalado${nc}"
+	else
+		echo -e "${amarillo}DHCP server no está instalado, iniciando instalación...${nc}"
+		
+		# Ejecutar instalación en segundo plano
+		sudo zypper --non-interactive --quiet install dhcp-server > /dev/null 2>&1 &
+		pid=$!
+		
+		echo -e "${amarillo}DHCP se está instalando...${nc}"
+		
+		# Esperar a que termine la instalación
+		wait $pid
+		
+		# Verificar si se instaló correctamente
+		if [ $? -eq 0 ]; then
+			echo -e "${verde}✓ DHCP server instalado correctamente${nc}"
+		else
+			echo -e "${rojo}✗ Error en la instalación de DHCP${nc}"
+			return 1
+		fi
+	fi
     
     echo ""
     
