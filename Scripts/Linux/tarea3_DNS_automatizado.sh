@@ -29,7 +29,7 @@ ayuda() {
     echo -e "  ${azul}-?, --help         ${nc}Muestra esta ayuda/menu"
 }
 
-print_error(){
+print_warning(){
     echo -e "${rojo}$1${nc}"
 }
 
@@ -47,51 +47,51 @@ validar_IP(){
 
 	# Validar formato X.X.X.X solo con numeros
 	if ! [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-		print_error "Direccion IP invalida, tiene que contener un formato X.X.X.X unicamente con numeros positivos"
+		print_warning "Direccion IP invalida, tiene que contener un formato X.X.X.X unicamente con numeros positivos"
         return 1
     fi
 	
 	# Validar cada octeto entre 0 y 255
     IFS='.' read -r a b c d <<< "$ip"
 	if [[ "$a" -eq 0  || "$d" -eq 0 ]]; then
-		print_error "Direccion IP invalida, no puede ser 0.X.X.X ni X.X.X.0"
+		print_warning "Direccion IP invalida, no puede ser 0.X.X.X ni X.X.X.0"
 		return 1
 	fi
 	
 	# Validar que no tenga 0 al izquierda y que no pasen los rangos de 8 bits
 	for octeto in $a $b $c $d; do
 	if [[ "$octeto" =~ ^0[0-9]+ ]]; then
-		print_error "Direccion IP invalida, no se pueden poner 0 a la izquierda a menos que sea 0"
+		print_warning "Direccion IP invalida, no se pueden poner 0 a la izquierda a menos que sea 0"
 		return 1
 	fi
 		if [[ "$octeto" -lt 0 || "$octeto" -gt 255 ]]; then
-				print_error "Direccion IP invalida, no puede ser mayor a 255 ni menor a 0"
+				print_warning "Direccion IP invalida, no puede ser mayor a 255 ni menor a 0"
 				return 1
 		fi
 	done
 
 	# Validar que no sea 0.0.0.0 ni 255.255.255.255
 	if [[ "$ip" = "0.0.0.0" || "$ip" = "255.255.255.255" ]]; then
-		print_error "Direccion IP invalida, no puede ser 0.0.0.0 ni 255.255.255.255"
+		print_warning "Direccion IP invalida, no puede ser 0.0.0.0 ni 255.255.255.255"
 		return 1
 	fi
 
     # Validar los espacios reservados para uso experimental (127.0.0.1-127.255.255.255)
 	if [[ "$a" -eq 127 ]]; then
-		print_error "Direccion IP invalida, las direcciones del rango 127.0.0.1 al 127.255.255.255 estan reservadas para host local"
+		print_warning "Direccion IP invalida, las direcciones del rango 127.0.0.1 al 127.255.255.255 estan reservadas para host local"
 		return 1
 	fi
 
     # Validar los espacios reservados para multicast (224.0.0.0-239.255.255.255)
 	if [[ "$a" -gt 224 && "$a" -lt 239 ]]; then
-		print_error "Direccion IP invalida, las direcciones del rango 224.0.0.0 al 239.255.255.255 estan reservadas para multicast"
+		print_warning "Direccion IP invalida, las direcciones del rango 224.0.0.0 al 239.255.255.255 estan reservadas para multicast"
 		return 1
 	fi
     return 0
 
 	# Validar los espacios reservados para uso experimental (240.0.0.0-255.255.255.254)
 	if [[ "$a" -gt 240 && "$a" -lt 255 ]]; then
-		print_error "Direccion IP invalida, las direcciones del rango 240.0.0.0 al 255.255.255.254 estan reservadas para usos experimentales"
+		print_warning "Direccion IP invalida, las direcciones del rango 240.0.0.0 al 255.255.255.254 estan reservadas para usos experimentales"
 		return 1
 	fi
 }
@@ -124,7 +124,7 @@ verificar_Instalacion() {
 install_bind9() {
     
     # Verificar que no esté ya instalado
-    if check_bind9_installed; then
+    if verificar_Instalacion; then
         print_info "BIND9 ya está instalado, omitiendo instalación"
         return 0
     fi
@@ -133,16 +133,14 @@ install_bind9() {
     
     # Refrescar repositorios
     print_info "Actualizando repositorios..."
-    if ! zypper refresh &>/dev/null; then
-        print_warning "No se pudieron actualizar los repositorios (continuando de todas formas :P)"
-    fi
+    zypper refresh &>/dev/null
     
     # Instalar paquetes necesarios
     print_info "Instalando paquete bind..."
     if zypper install -y bind &>/dev/null; then
         print_success "Paquete bind instalado correctamente"
     else
-        print_error "Error al instalar bind"
+        print_warning "Error al instalar bind"
         return 1
     fi
     
@@ -154,7 +152,7 @@ install_bind9() {
     fi
     
     # Verificar instalación
-    if check_bind9_installed; then
+    if verificar_Instalacion; then
         print_success "BIND9 instalado exitosamente"
         
         # Mostrar versión instalada
@@ -163,7 +161,7 @@ install_bind9() {
         
         return 0
     else
-        print_error "La instalación parece haber fallado"
+        print_warning "La instalación parece haber fallado"
         return 1
     fi
 }
