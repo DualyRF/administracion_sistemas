@@ -37,7 +37,7 @@ print_success(){
     echo -e "${verde}$1${nc}"
 }
 
-print_warning(){
+print_info(){
     echo -e "${amarillo}$1${nc}"
 }
 
@@ -48,11 +48,11 @@ validar_IP(){
 	# Validar formato X.X.X.X solo con numeros
 	if ! [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
 		print_error "Direccion IP invalida, tiene que contener un formato X.X.X.X unicamente con numeros positivos"
-    	return 1
-   	fi
+        return 1
+    fi
 	
 	# Validar cada octeto entre 0 y 255
-    	IFS='.' read -r a b c d <<< "$ip"
+    IFS='.' read -r a b c d <<< "$ip"
 	if [[ "$a" -eq 0  || "$d" -eq 0 ]]; then
 		print_error "Direccion IP invalida, no puede ser 0.X.X.X ni X.X.X.0"
 		return 1
@@ -120,10 +120,58 @@ verificar_Instalacion() {
     return 1
 }
 
+# Instalar BIND9 en openSUSE
+install_bind9() {
+    
+    # Verificar que no esté ya instalado
+    if check_bind9_installed; then
+        print_info "BIND9 ya está instalado, omitiendo instalación"
+        return 0
+    fi
+    
+    print_info "Instalando BIND9 y utilidades..."
+    
+    # Refrescar repositorios
+    print_info "Actualizando repositorios..."
+    if ! zypper refresh &>/dev/null; then
+        print_warning "No se pudieron actualizar los repositorios (continuando de todas formas :P)"
+    fi
+    
+    # Instalar paquetes necesarios
+    print_info "Instalando paquete bind..."
+    if zypper install -y bind &>/dev/null; then
+        print_success "Paquete bind instalado correctamente"
+    else
+        print_error "Error al instalar bind"
+        return 1
+    fi
+    
+    print_info "Instalando paquete bind-utils (herramientas DNS)..."
+    if zypper install -y bind-utils &>/dev/null; then
+        print_success "Paquete bind-utils instalado correctamente"
+    else
+        print_warning "Error al instalar bind-utils"
+    fi
+    
+    # Verificar instalación
+    if check_bind9_installed; then
+        print_success "BIND9 instalado exitosamente"
+        
+        # Mostrar versión instalada
+        local version=$(rpm -q bind --queryformat '%{VERSION}')
+        print_info "Versión instalada: $version"
+        
+        return 0
+    else
+        print_error "La instalación parece haber fallado"
+        return 1
+    fi
+}
+
 # ---------- Main ----------
 case $1 in
     -v | --verify) verificar_Instalacion ;;
-    # -i | --install) instalar_DHCP ;;
+    -i | --install) install_bind9 ;;
     # -m | --monitor) monitorear_Clientes ;;
     # -r | --restart) reiniciar_DHCP ;;
     # -c | --config) configurar_DHCP ;;
