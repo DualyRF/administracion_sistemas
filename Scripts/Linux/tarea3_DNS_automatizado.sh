@@ -14,6 +14,15 @@ ip=""
 interface=""
 mode=""
 server_ip=""
+named_conf="/etc/named.conf"
+ZONES_DIR="/var/lib/named"
+NAMED_SERVICE="named"
+LOG_DIR="/var/log/named"
+FORCE=false
+BACKUP=false
+DRY_RUN=false
+CONFIGURE_DNS=false
+EVIDENCE_FILE="/tmp/dns-test-evidence-$(date +%Y%m%d-%H%M%S).log"
 
 # ---------- Funciones ----------
 
@@ -195,7 +204,7 @@ agregar_dominio() {
     fi
 
     # Verificar si el dominio ya existe en named.conf
-    if grep -q "zone \"$nuevo_dominio\"" "$NAMED_CONF" 2>/dev/null; then
+    if grep -q "zone \"$nuevo_dominio\"" "$named_conf" 2>/dev/null; then
         print_warning "El dominio $nuevo_dominio ya está configurado"
         return 1
     fi
@@ -205,7 +214,7 @@ agregar_dominio() {
     read -r nueva_ip
 
     # Validar IP
-    if ! validate_ipv4 "$nueva_ip"; then
+    if ! validar_IP "$nueva_ip"; then
         print_warning "IP inválida, cancelando operación"
         return 1
     fi
@@ -246,9 +255,9 @@ EOFss
     print_success "Archivo de zona creado correctamente"
 
     # Agregar zona a named.conf
-    print_info "Agregando zona a $NAMED_CONF..."
+    print_info "Agregando zona a $named_conf..."
 
-    cat >> "$NAMED_CONF" <<EOF
+    cat >> "$named_conf" <<EOF
 
 zone "$nuevo_dominio" {
     type master;
@@ -257,7 +266,7 @@ zone "$nuevo_dominio" {
 EOF
 
     # Verificar sintaxis de named.conf
-    if ! named-checkconf "$NAMED_CONF" &>/dev/null; then
+    if ! named-checkconf "$named_conf" &>/dev/null; then
         print_warning "Error en la sintaxis de named.conf"
         return 1
     fi
@@ -281,7 +290,7 @@ EOF
 }
 
 eliminar_dominio() {
-    print_header "Eliminar Dominio"
+    print_info "Eliminar Dominio"
 
     # Listar dominios disponibles
     listar_dominios
@@ -292,7 +301,7 @@ eliminar_dominio() {
     read -r dominio_eliminar
 
     # Verificar que el dominio existe
-    if ! grep -q "zone \"$dominio_eliminar\"" "$NAMED_CONF" 2>/dev/null; then
+    if ! grep -q "zone \"$dominio_eliminar\"" "$named_conf" 2>/dev/null; then
         print_warning "El dominio $dominio_eliminar no existe en la configuración"
         return 1
     fi
@@ -313,10 +322,10 @@ eliminar_dominio() {
     print_info "Eliminando entrada de named.conf..."
 
     # Eliminar bloque de la zona en named.conf
-    sed -i "/zone \"$dominio_eliminar\"/,/^};/d" "$NAMED_CONF"
+    sed -i "/zone \"$dominio_eliminar\"/,/^};/d" "$named_conf"
 
     # Verificar sintaxis de named.conf
-    if named-checkconf "$NAMED_CONF" &>/dev/null; then
+    if named-checkconf "$named_conf" &>/dev/null; then
         print_success "Entrada eliminada de named.conf"
     else
         print_warning "Error en named.conf después de eliminar, revise manualmente"
@@ -344,16 +353,16 @@ eliminar_dominio() {
 }
 
 listar_dominios() {
-    print_header "Dominios Configurados"
+    print_info "Dominios Configurados"
 
     # Verificar que named.conf existe
-    if [[ ! -f "$NAMED_CONF" ]]; then
-        print_warning "No se encontró el archivo $NAMED_CONF"
+    if [[ ! -f "$named_conf" ]]; then
+        print_warning "No se encontró el archivo $named_conf"
         return 1
     fi
 
     # Extraer zonas configuradas
-    local dominios=($(grep "^zone " "$NAMED_CONF" | awk -F'"' '{print $2}' | grep -v "localhost\|0.in-addr\|127.in-addr"))
+    local dominios=($(grep "^zone " "$named_conf" | awk -F'"' '{print $2}' | grep -v "localhost\|0.in-addr\|127.in-addr"))
 
     if [[ ${#dominios[@]} -eq 0 ]]; then
         print_warning "No hay dominios configurados"
