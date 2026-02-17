@@ -24,7 +24,7 @@ ayuda() {
     echo -e "  ${azul}-v, --verify       ${nc}Verifica si esta instalado BIND9"
     echo -e "  ${azul}-i, --install      ${nc}Instala BIND9"
     echo -e "  ${azul}-m, --monitor      ${nc}Monitorear servidor DNS"
-    echo -e "  ${azul}-r, --restart      ${nc}Reiniciar servidor DHCP"
+    echo -e "  ${azul}-r, --restart      ${nc}Reiniciar servidor DNS"
     echo -e "  ${azul}-c, --configurar   ${nc}Configurar servidor DNS"
     echo -e "  ${azul}-?, --help         ${nc}Muestra esta ayuda/menu"
 }
@@ -166,11 +166,248 @@ install_bind9() {
     fi
 }
 
+agregar_dominio() {
+    print_header "Agregar Dominio"
+
+    # Pedir nombre del dominio
+    echo -ne "${BLUE}[i]${NC} Ingrese el nombre del dominio (ej: reprobados.com): "
+    read -r nuevo_dominio
+
+    # Validar dominio
+    if ! validate_domain "$nuevo_dominio"; then
+        print_error "Dominio inválido, cancelando operación"
+        return 1
+    fi
+
+    # Verificar si el dominio ya existe en named.conf
+    if grep -q "zone \"$nuevo_dominio\"" "$NAMED_CONF" 2>/dev/null; then
+        print_error "El dominio $nuevo_dominio ya está configurado"
+        return 1
+    fi
+
+    # Pedir IP del dominio
+    echo -ne "${BLUE}[i]${NC} Ingrese la IP para $nuevo_dominio: "
+    read -r nueva_ip
+
+    # Validar IP
+    if ! validate_ipv4 "$nueva_ip"; then
+        print_error "IP inválida, cancelando operación"
+        return 1
+    fi
+
+    # Crear archivo de zona
+    local zone_file="$ZONES_DIR/${nuevo_dominio}.zone"
+    local serial=$(date +%Y%m%d01)
+
+    print_info "Creando archivo de zona: $zone_file"
+
+    cat > "$zone_file" <<EOF
+\$TTL 86400
+@   IN  SOA ns1.$nuevo_dominio. admin.$nuevo_dominio. (
+            $serial ; Serial
+            3600        ; Refresh
+            1800        ; Retry
+            604800      ; Expire
+            86400 )     ; Minimum TTL
+
+; Name Server
+@           IN  NS      ns1.$nuevo_dominio.
+
+; Registros A
+@           IN  A       $nueva_ip
+ns1         IN  A       $nueva_ip
+
+; Registro CNAME
+www         IN  CNAME   $nuevo_dominio.
+EOF
+
+    # Verificar sintaxis del archivo de zona
+    if ! named-checkzone "$nuevo_dominio" "$zone_file" &>/dev/null; then
+        print_error "Error en la sintaxis del archivo de zona"
+        rm -f "$zone_file"
+        return 1
+    fi
+
+    print_success "Archivo de zona creado correctamente"
+
+    # Agregar zona a named.conf
+    print_info "Agregando zona a $NAMED_CONF..."
+
+    cat >> "$NAMED_CONF" <<EOF
+
+zone "$nuevo_dominio" {
+    type master;
+    file "$zone_file";
+};
+EOF
+
+    # Verificar sintaxis de named.conf
+    if ! named-checkconf "$NAMED_CONF" &>/dev/null; then
+        print_error "Error en la sintaxis de named.conf"
+        return 1
+    fi
+
+    print_success "Zona agregada a named.conf correctamente"
+
+    # Recargar BIND9 para aplicar cambios
+    print_info "Recargando servicio BIND9..."
+    if systemctl reload named &>/dev/null; then
+        print_success "Servicio recargado correctamente"
+    else
+        print_warning "No se pudo recargar el servicio, intente: systemctl reload named"
+    fi
+
+    echo ""
+    print_success "Dominio $nuevo_dominio agregado exitosamente"
+    print_info "  - IP configurada: $nueva_ip"
+    print_info "  - Registro A: $nuevo_dominio → $nueva_ip"
+    print_info "  - Registro CNAME: www.$nuevo_dominio → $nuevo_dominio"
+    print_info "  - Archivo de zona: $zone_file"
+}
+
+eliminar_dominio() {
+    print_header "Eliminar Dominio"
+
+    # Listar dominios disponibles
+    listar_dominios
+    echo ""
+
+    # Pedir dominio a eliminar
+    echo -ne "${BLUE}[i]${NC} Ingrese el dominio a eliminar: "
+    read -r dominio_eliminar
+
+    # Verificar que el dominio existe
+    if ! grep -q "zone \"$dominio_eliminar\"" "$NAMED_CONF" 2>/dev/null; then
+        print_error "El dominio $dominio_eliminar no existe en la configuración"
+        return 1
+    fi
+
+    # Pedir confirmación
+    echo ""
+    print_warning "¿Está seguro de eliminar el dominio $dominio_eliminar? [y/n]: "
+    read -r confirmacion
+
+    if [[ ! "$confirmacion" =~ ^[Yy]$ ]]; then
+        print_info "Operación cancelada por el usuario"
+        return 0
+    fi
+
+    local zone_file="$ZONES_DIR/${dominio_eliminar}.zone"
+
+    # Eliminar entrada de named.conf
+    print_info "Eliminando entrada de named.conf..."
+
+    # Eliminar bloque de la zona en named.conf
+    sed -i "/zone \"$dominio_eliminar\"/,/^};/d" "$NAMED_CONF"
+
+    # Verificar sintaxis de named.conf
+    if named-checkconf "$NAMED_CONF" &>/dev/null; then
+        print_success "Entrada eliminada de named.conf"
+    else
+        print_error "Error en named.conf después de eliminar, revise manualmente"
+        return 1
+    fi
+
+    # Eliminar archivo de zona
+    if [[ -f "$zone_file" ]]; then
+        print_info "Eliminando archivo de zona: $zone_file"
+        rm -f "$zone_file"
+        print_success "Archivo de zona eliminado"
+    else
+        print_warning "Archivo de zona no encontrado: $zone_file"
+    fi
+
+    # Recargar BIND9
+    print_info "Recargando servicio BIND9..."
+    if systemctl reload named &>/dev/null; then
+        print_success "Servicio recargado correctamente"
+    else
+        print_warning "No se pudo recargar el servicio, intente: systemctl reload named"
+    fi
+
+    print_success "Dominio $dominio_eliminar eliminado exitosamente"
+}
+
+listar_dominios() {
+    print_header "Dominios Configurados"
+
+    # Verificar que named.conf existe
+    if [[ ! -f "$NAMED_CONF" ]]; then
+        print_error "No se encontró el archivo $NAMED_CONF"
+        return 1
+    fi
+
+    # Extraer zonas configuradas
+    local dominios=($(grep "^zone " "$NAMED_CONF" | awk -F'"' '{print $2}' | grep -v "localhost\|0.in-addr\|127.in-addr"))
+
+    if [[ ${#dominios[@]} -eq 0 ]]; then
+        print_warning "No hay dominios configurados"
+        return 0
+    fi
+
+    # Encabezado de tabla
+    echo ""
+    printf "${BOLD}%-30s %-20s %-15s${NC}\n" "DOMINIO" "IP CONFIGURADA" "ESTADO"
+    echo "──────────────────────────────────────────────────────────────"
+
+    # Mostrar cada dominio con su IP
+    for dominio in "${dominios[@]}"; do
+        local zone_file="$ZONES_DIR/${dominio}.zone"
+        local ip="N/A"
+        local estado="${RED}Sin archivo de zona${NC}"
+
+        if [[ -f "$zone_file" ]]; then
+            # Extraer IP del registro A del dominio raíz
+            ip=$(grep "^@\s*IN\s*A\|^@\t*IN\t*A" "$zone_file" 2>/dev/null | awk '{print $NF}')
+            [[ -z "$ip" ]] && ip="N/A"
+            estado="${GREEN}Activo${NC}"
+        fi
+
+        printf "%-30s %-20s " "$dominio" "$ip"
+        echo -e "$estado"
+    done
+
+    echo ""
+    print_info "Total de dominios: ${#dominios[@]}"
+}
+
+monitoreo() {
+    while true; do
+        echo ""
+        echo -e "${BOLD}${CYAN}"
+        echo "╔════════════════════════════════════════════════════════════╗"
+        echo "║              Menú de Monitoreo DNS                        ║"
+        echo "╚════════════════════════════════════════════════════════════╝"
+        echo -e "${NC}"
+
+        echo -e "  ${GREEN}1)${NC} Agregar dominio"
+        echo -e "  ${RED}2)${NC} Eliminar dominio"
+        echo -e "  ${BLUE}3)${NC} Listar dominios"
+        echo -e "  ${YELLOW}0)${NC} Salir"
+        echo ""
+        echo -ne "${BOLD}Opción: ${NC}"
+        read -r opcion
+
+        case $opcion in
+            1) agregar_dominio ;;
+            2) eliminar_dominio ;;
+            3) listar_dominios ;;
+            0)
+                print_info "Saliendo del menú de monitoreo"
+                break
+                ;;
+            *)
+                print_error "Opción inválida: $opcion"
+                ;;
+        esac
+    done
+}
+
 # ---------- Main ----------
 case $1 in
     -v | --verify) verificar_Instalacion ;;
     -i | --install) install_bind9 ;;
-    # -m | --monitor) monitorear_Clientes ;;
+    -m | --monitor) monitoreo ;;
     # -r | --restart) reiniciar_DHCP ;;
     # -c | --config) configurar_DHCP ;;
     -? | --help) ayuda ;;
