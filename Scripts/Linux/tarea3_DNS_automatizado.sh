@@ -41,6 +41,21 @@ print_info(){
     echo -e "${amarillo}$1${nc}"
 }
 
+validate_domain() {
+    local domain="$1"
+    
+    # Regex para validar dominio
+    local domain_regex='^([a-zA-Z0-9]([-a-zA-Z0-9]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+    
+    if [[ ! $domain =~ $domain_regex ]]; then
+        print_warning "Formato de dominio inválido: $domain"
+        return 1
+    fi
+    
+    return 0
+}
+
+
 validar_IP(){
 	# Variable
 	local ip="$1"
@@ -167,31 +182,31 @@ install_bind9() {
 }
 
 agregar_dominio() {
-    print_header "Agregar Dominio"
+    print_info "Agregar Dominio"
 
     # Pedir nombre del dominio
-    echo -ne "${BLUE}[i]${NC} Ingrese el nombre del dominio (ej: reprobados.com): "
+    echo -ne "${azul}[i]${nc} Ingrese el nombre del dominio (ej: reprobados.com): "
     read -r nuevo_dominio
 
     # Validar dominio
     if ! validate_domain "$nuevo_dominio"; then
-        print_error "Dominio inválido, cancelando operación"
+        print_warning "Dominio inválido, cancelando operación"
         return 1
     fi
 
     # Verificar si el dominio ya existe en named.conf
     if grep -q "zone \"$nuevo_dominio\"" "$NAMED_CONF" 2>/dev/null; then
-        print_error "El dominio $nuevo_dominio ya está configurado"
+        print_warning "El dominio $nuevo_dominio ya está configurado"
         return 1
     fi
 
     # Pedir IP del dominio
-    echo -ne "${BLUE}[i]${NC} Ingrese la IP para $nuevo_dominio: "
+    echo -ne "${azul}[i]${nc} Ingrese la IP para $nuevo_dominio: "
     read -r nueva_ip
 
     # Validar IP
     if ! validate_ipv4 "$nueva_ip"; then
-        print_error "IP inválida, cancelando operación"
+        print_warning "IP inválida, cancelando operación"
         return 1
     fi
 
@@ -219,11 +234,11 @@ ns1         IN  A       $nueva_ip
 
 ; Registro CNAME
 www         IN  CNAME   $nuevo_dominio.
-EOF
+EOFss
 
     # Verificar sintaxis del archivo de zona
     if ! named-checkzone "$nuevo_dominio" "$zone_file" &>/dev/null; then
-        print_error "Error en la sintaxis del archivo de zona"
+        print_warning "Error en la sintaxis del archivo de zona"
         rm -f "$zone_file"
         return 1
     fi
@@ -243,7 +258,7 @@ EOF
 
     # Verificar sintaxis de named.conf
     if ! named-checkconf "$NAMED_CONF" &>/dev/null; then
-        print_error "Error en la sintaxis de named.conf"
+        print_warning "Error en la sintaxis de named.conf"
         return 1
     fi
 
@@ -273,12 +288,12 @@ eliminar_dominio() {
     echo ""
 
     # Pedir dominio a eliminar
-    echo -ne "${BLUE}[i]${NC} Ingrese el dominio a eliminar: "
+    echo -ne "${azul}[i]${nc} Ingrese el dominio a eliminar: "
     read -r dominio_eliminar
 
     # Verificar que el dominio existe
     if ! grep -q "zone \"$dominio_eliminar\"" "$NAMED_CONF" 2>/dev/null; then
-        print_error "El dominio $dominio_eliminar no existe en la configuración"
+        print_warning "El dominio $dominio_eliminar no existe en la configuración"
         return 1
     fi
 
@@ -304,7 +319,7 @@ eliminar_dominio() {
     if named-checkconf "$NAMED_CONF" &>/dev/null; then
         print_success "Entrada eliminada de named.conf"
     else
-        print_error "Error en named.conf después de eliminar, revise manualmente"
+        print_warning "Error en named.conf después de eliminar, revise manualmente"
         return 1
     fi
 
@@ -333,7 +348,7 @@ listar_dominios() {
 
     # Verificar que named.conf existe
     if [[ ! -f "$NAMED_CONF" ]]; then
-        print_error "No se encontró el archivo $NAMED_CONF"
+        print_warning "No se encontró el archivo $NAMED_CONF"
         return 1
     fi
 
@@ -347,20 +362,20 @@ listar_dominios() {
 
     # Encabezado de tabla
     echo ""
-    printf "${BOLD}%-30s %-20s %-15s${NC}\n" "DOMINIO" "IP CONFIGURADA" "ESTADO"
+    printf "${BOLD}%-30s %-20s %-15s${nc}\n" "DOMINIO" "IP CONFIGURADA" "ESTADO"
     echo "──────────────────────────────────────────────────────────────"
 
     # Mostrar cada dominio con su IP
     for dominio in "${dominios[@]}"; do
         local zone_file="$ZONES_DIR/${dominio}.zone"
         local ip="N/A"
-        local estado="${RED}Sin archivo de zona${NC}"
+        local estado="${rojo}Sin archivo de zona${nc}"
 
         if [[ -f "$zone_file" ]]; then
             # Extraer IP del registro A del dominio raíz
             ip=$(grep "^@\s*IN\s*A\|^@\t*IN\t*A" "$zone_file" 2>/dev/null | awk '{print $NF}')
             [[ -z "$ip" ]] && ip="N/A"
-            estado="${GREEN}Activo${NC}"
+            estado="${verde}Activo${nc}"
         fi
 
         printf "%-30s %-20s " "$dominio" "$ip"
@@ -374,18 +389,18 @@ listar_dominios() {
 monitoreo() {
     while true; do
         echo ""
-        echo -e "${BOLD}${CYAN}"
+        echo -e "${cyan}"
         echo "╔════════════════════════════════════════════════════════════╗"
         echo "║              Menú de Monitoreo DNS                        ║"
         echo "╚════════════════════════════════════════════════════════════╝"
-        echo -e "${NC}"
+        echo -e "${nc}"
 
-        echo -e "  ${GREEN}1)${NC} Agregar dominio"
-        echo -e "  ${RED}2)${NC} Eliminar dominio"
-        echo -e "  ${BLUE}3)${NC} Listar dominios"
-        echo -e "  ${YELLOW}0)${NC} Salir"
+        echo -e "  ${verde}1)${nc} Agregar dominio"
+        echo -e "  ${rojo}2)${nc} Eliminar dominio"
+        echo -e "  ${azul}3)${nc} Listar dominios"
+        echo -e "  ${amarillo}0)${nc} Salir"
         echo ""
-        echo -ne "${BOLD}Opción: ${NC}"
+        echo -ne "Opcion: "
         read -r opcion
 
         case $opcion in
@@ -397,7 +412,7 @@ monitoreo() {
                 break
                 ;;
             *)
-                print_error "Opción inválida: $opcion"
+                print_warning "Opcion inválida: $opcion"
                 ;;
         esac
     done
