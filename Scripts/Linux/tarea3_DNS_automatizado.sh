@@ -111,13 +111,14 @@ validar_IP(){
 		print_warning "Direccion IP invalida, las direcciones del rango 224.0.0.0 al 239.255.255.255 estan reservadas para multicast"
 		return 1
 	fi
-    return 0
 
 	# Validar los espacios reservados para uso experimental (240.0.0.0-255.255.255.254)
 	if [[ "$a" -gt 240 && "$a" -lt 255 ]]; then
 		print_warning "Direccion IP invalida, las direcciones del rango 240.0.0.0 al 255.255.255.254 estan reservadas para usos experimentales"
 		return 1
 	fi
+    
+    return 0
 }
 
 verificar_Instalacion() {
@@ -243,7 +244,7 @@ ns1         IN  A       $nueva_ip
 
 ; Registro CNAME
 www         IN  CNAME   $nuevo_dominio.
-EOFss
+EOF
 
     # Verificar sintaxis del archivo de zona
     if ! named-checkzone "$nuevo_dominio" "$zone_file" &>/dev/null; then
@@ -343,10 +344,17 @@ eliminar_dominio() {
 
     # Recargar BIND9
     print_info "Recargando servicio BIND9..."
-    if systemctl reload named &>/dev/null; then
+    if systemctl reload named 2>/dev/null; then
         print_success "Servicio recargado correctamente"
     else
-        print_warning "No se pudo recargar el servicio, intente: systemctl reload named"
+        # Si reload falla, intentar restart
+        print_warning "reload falló, intentando restart..."
+        if systemctl restart named 2>/dev/null; then
+            print_success "Servicio reiniciado correctamente"
+        else
+            print_warning "No se pudo recargar el servicio"
+            print_warning "Ejecute manualmente: systemctl restart named"
+        fi
     fi
 
     print_success "Dominio $dominio_eliminar eliminado exitosamente"
@@ -371,7 +379,7 @@ listar_dominios() {
 
     # Encabezado de tabla
     echo ""
-    printf "${BOLD}%-30s %-20s %-15s${nc}\n" "DOMINIO" "IP CONFIGURADA" "ESTADO"
+    printf "%-30s %-20s %-15s$\n" "DOMINIO" "IP CONFIGURADA" "ESTADO"
     echo "──────────────────────────────────────────────────────────────"
 
     # Mostrar cada dominio con su IP
