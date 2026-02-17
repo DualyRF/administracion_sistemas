@@ -147,48 +147,176 @@ verificar_Instalacion() {
 
 # Instalar BIND9 en openSUSE
 install_bind9() {
-    
-    # Verificar que no esté ya instalado
     if verificar_Instalacion; then
-        print_info "BIND9 ya está instalado, omitiendo instalación"
-        return 0
-    fi
-    
-    print_info "Instalando BIND9 y utilidades..."
-    
-    # Refrescar repositorios
-    print_info "Actualizando repositorios..."
-    zypper refresh &>/dev/null
-    
-    # Instalar paquetes necesarios
-    print_info "Instalando paquete bind..."
-    if zypper install -y bind &>/dev/null; then
-        print_success "Paquete bind instalado correctamente"
+        print_info "BIND9 ya está instalado"
+        echo -ne "${amarillo}¿Desea reconfigurar el servidor DNS? [s/N]: ${nc}"
+        read -r reconf
+        if [[ ! "$reconf" =~ ^[Ss]$ ]]; then
+            print_info "Operación cancelada"
+            return 0
+        fi
     else
-        print_warning "Error al instalar bind"
+        # -----------------------------------------------
+        # PASO 2: Instalar paquetes
+        # -----------------------------------------------
+        print_info "Instalando BIND9 y utilidades..."
+
+        print_info "Actualizando repositorios..."
+        zypper refresh &>/dev/null
+
+        print_info "Instalando paquete bind..."
+        if zypper install -y bind &>/dev/null; then
+            print_success "Paquete bind instalado correctamente"
+        else
+            print_warning "Error al instalar bind"
+            return 1
+        fi
+
+        print_info "Instalando paquete bind-utils..."
+        if zypper install -y bind-utils &>/dev/null; then
+            print_success "Paquete bind-utils instalado correctamente"
+        else
+            print_warning "Error al instalar bind-utils (no crítico)"
+        fi
+    fi
+
+    # -----------------------------------------------
+    # PASO 3: Generar named.conf
+    # -----------------------------------------------
+    print_info "Generando archivo de configuración $named_conf..."
+
+    # Crear directorio de zonas si no existe
+    if [[ ! -d "$ZONES_DIR" ]]; then
+        mkdir -p "$ZONES_DIR"
+        print_success "Directorio de zonas creado: $ZONES_DIR"
+    fi
+
+    cat > "$named_conf" <<EOF
+# Archivo de configuración de BIND9
+# Generado automáticamente por dns-setup.sh
+# $(date)
+
+options {
+    directory "$ZONES_DIR";
+    listen-on { any; };
+    allow-query { any; };
+    recursion no;
+    forwarders { };
+    allow-transfer { none; };
+};
+
+zone "localhost" {
+    type master;
+    file "localhost.zone";
+};
+
+zone "0.in-addr.arpa" {
+    type master;
+    file "0.in-addr.arpa.zone";
+};
+
+zone "127.in-addr.arpa" {
+    type master;
+    file "127.in-addr.arpa.zone";
+};
+EOF
+
+    # Verificar sintaxis de named.conf
+    if named-checkconf "$named_conf" 2>/dev/null; then
+        print_success "Archivo named.conf generado correctamente"
+    else
+        print_warning "Error en la sintaxis de named.conf"
         return 1
     fi
-    
-    print_info "Instalando paquete bind-utils (herramientas DNS)..."
-    if zypper install -y bind-utils &>/dev/null; then
-        print_success "Paquete bind-utils instalado correctamente"
+
+    # -----------------------------------------------
+    # PASO 4: Habilitar el servicio
+    # -----------------------------------------------
+    print_info "Habilitando servicio named en el arranque..."
+    if systemctl enable named 2>/dev/null; then
+        print_success "Servicio named habilitado"
     else
-        print_warning "Error al instalar bind-utils"
-    fi
-    
-    # Verificar instalación
-    if verificar_Instalacion; then
-        print_success "BIND9 instalado exitosamente"
-        
-        # Mostrar versión instalada
-        local version=$(rpm -q bind --queryformat '%{VERSION}')
-        print_info "Versión instalada: $version"
-        
-        return 0
-    else
-        print_warning "La instalación parece haber fallado"
+        print_warning "No se pudo habilitar el servicio named"
         return 1
     fi
+
+    # -----------------------------------------------
+    # PASO 5: Iniciar el servicio
+    # -----------------------------------------------
+    print_info "Iniciando servicio named..."
+
+    if systemctl is-active --quiet named; then
+        print_info "Servicio ya estaba activo, reiniciando..."
+        if systemctl restart named 2>/dev/null; then
+            print_success "Servicio named reiniciado"
+        else
+            print_warning "Error al reiniciar el servicio named"
+            return 1
+        fi
+    else
+        if systemctl start named 2>/dev/null; then
+            print_success "Servicio named iniciado"
+        else
+            print_warning "Error al iniciar el servicio named"
+            print_warning "Revise los logs: journalctl -u named"
+            return 1
+        fi
+    fi
+
+    # -----------------------------------------------
+    # PASO 6: Configurar firewall
+    # -----------------------------------------------
+    print_info "Configurando firewall para DNS (puerto 53)..."
+
+    if command -v firewall-cmd &>/dev/null; then
+        if firewall-cmd --add-service=dns --permanent 2>/dev/null; then
+            print_success "Puerto 53 abierto en firewall (permanente)"
+        else
+            print_warning "No se pudo configurar el firewall"
+        fi
+
+        if firewall-cmd --reload 2>/dev/null; then
+            print_success "Firewall recargado"
+        else
+            print_warning "No se pudo recargar el firewall"
+        fi
+    else
+        print_warning "firewalld no encontrado, configure el firewall manualmente"
+        print_warning "Abra el puerto 53 TCP y UDP"
+    fi
+
+    # -----------------------------------------------
+    # PASO 7: Verificar que todo funciona
+    # -----------------------------------------------
+    print_info "Verificando estado del servidor DNS..."
+    echo ""
+
+    if systemctl is-active --quiet named; then
+        print_success "Servicio named    : activo y corriendo"
+    else
+        print_warning "Servicio named    : NO está corriendo"
+        return 1
+    fi
+
+    if ss -tulnp 2>/dev/null | grep -q ":53 "; then
+        print_success "Puerto 53         : escuchando"
+    else
+        print_warning "Puerto 53         : NO está escuchando"
+    fi
+
+    if named-checkconf "$named_conf" 2>/dev/null; then
+        print_success "Configuración     : sintaxis correcta"
+    else
+        print_warning "Configuración     : hay errores de sintaxis"
+    fi
+
+    echo ""
+    print_success "========================================"
+    print_success " BIND9 instalado y configurado          "
+    print_success "========================================"
+    echo ""
+    print_info "Siguiente paso: agregar dominios con"
+    print_info "  $0 --monitor"
 }
 
 agregar_dominio() {
