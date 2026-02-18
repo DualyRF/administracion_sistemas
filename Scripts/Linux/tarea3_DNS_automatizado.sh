@@ -156,9 +156,6 @@ install_bind9() {
             return 0
         fi
     else
-        # -----------------------------------------------
-        # PASO 2: Instalar paquetes
-        # -----------------------------------------------
         print_info "Instalando BIND9 y utilidades..."
 
         print_info "Actualizando repositorios..."
@@ -180,12 +177,8 @@ install_bind9() {
         fi
     fi
 
-    # -----------------------------------------------
-    # PASO 3: Generar named.conf
-    # -----------------------------------------------
     print_info "Generando archivo de configuración $named_conf..."
 
-    # Crear directorio de zonas si no existe
     if [[ ! -d "$ZONES_DIR" ]]; then
         mkdir -p "$ZONES_DIR"
         print_success "Directorio de zonas creado: $ZONES_DIR"
@@ -221,7 +214,6 @@ zone "127.in-addr.arpa" {
 };
 EOF
 
-    # Verificar sintaxis de named.conf
     if named-checkconf "$named_conf" 2>/dev/null; then
         print_success "Archivo named.conf generado correctamente"
     else
@@ -229,9 +221,6 @@ EOF
         return 1
     fi
 
-    # -----------------------------------------------
-    # PASO 4: Habilitar el servicio
-    # -----------------------------------------------
     print_info "Habilitando servicio named en el arranque..."
     if systemctl enable named 2>/dev/null; then
         print_success "Servicio named habilitado"
@@ -240,9 +229,6 @@ EOF
         return 1
     fi
 
-    # -----------------------------------------------
-    # PASO 5: Iniciar el servicio
-    # -----------------------------------------------
     print_info "Iniciando servicio named..."
 
     if systemctl is-active --quiet named; then
@@ -263,9 +249,6 @@ EOF
         fi
     fi
 
-    # -----------------------------------------------
-    # PASO 6: Configurar firewall
-    # -----------------------------------------------
     print_info "Configurando firewall para DNS (puerto 53)..."
 
     if command -v firewall-cmd &>/dev/null; then
@@ -285,9 +268,6 @@ EOF
         print_warning "Abra el puerto 53 TCP y UDP"
     fi
 
-    # -----------------------------------------------
-    # PASO 7: Verificar que todo funciona
-    # -----------------------------------------------
     print_info "Verificando estado del servidor DNS..."
     echo ""
 
@@ -311,9 +291,7 @@ EOF
     fi
 
     echo ""
-    print_success "========================================"
     print_success " BIND9 instalado y configurado          "
-    print_success "========================================"
     echo ""
     print_info "Siguiente paso: agregar dominios con"
     print_info "  $0 --monitor"
@@ -535,9 +513,9 @@ monitoreo() {
     while true; do
         echo ""
         echo -e "${cyan}"
-        echo "╔════════════════════════════════════════════════════════════╗"
-        echo "║              Menú de Monitoreo DNS                        ║"
-        echo "╚════════════════════════════════════════════════════════════╝"
+        echo "╔═════════════════════════════════════════════════╗"
+        echo "║              Menú de Monitoreo DNS              ║"
+        echo "╚═════════════════════════════════════════════════╝"
         echo -e "${nc}"
 
         echo -e "  ${verde}1)${nc} Agregar dominio"
