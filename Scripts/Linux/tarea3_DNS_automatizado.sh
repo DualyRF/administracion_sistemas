@@ -385,7 +385,7 @@ agregar_dominio() {
     echo -ne "${azul}Ingrese el nombre del dominio (ej: reprobados.com): ${nc}"
     read -r nuevo_dominio
 
-    if ! validate_domain "$nuevo_dominio"; then
+    if ! validar_Dominio "$nuevo_dominio"; then
         print_warning "Dominio inválido, cancelando operación"
         return 1
     fi
