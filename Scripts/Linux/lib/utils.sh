@@ -18,3 +18,7 @@ print_success(){
 print_info(){
     echo -e "${amarillo}$1${nc}"
 }
+
+print_menu(){
+    echo -e "${cyan}$1${nc}"
+}

@@ -149,7 +149,7 @@ EOF
         print_info "IP actual: $IP_ACTUAL"
         print_info "Gateway: $GATEWAY"
 
-        echo -ne "${amarillo}¿Desea configurar IP estática? [S/n]: ${nc}"
+        print_info "¿Desea configurar IP estática? [y/n]:"
         read -r respuesta
 
         if [[ "$respuesta" =~ ^[Nn]$ ]]; then
@@ -160,18 +160,18 @@ EOF
             return 0
         fi
 
-        echo -ne "${amarillo}¿Usar estos valores como IP fija? [S/n]: ${nc}"
+        print_info "¿Usar estos valores como IP fija? [y/n]: "
         read -r respuesta
 
-        if [[ -z "$respuesta" ]] || [[ "$respuesta" =~ ^[Ss]$ ]]; then
+        if [[ -z "$respuesta" ]] || [[ "$respuesta" =~ ^[Yy]$ ]]; then
             server_ip=$IP_ACTUAL
             GW=$GATEWAY
         else
-            echo -ne "${azul}Ingrese la IP fija deseada: ${nc}"
+            echo -ne "${amarillo}Ingrese la IP fija deseada: ${nc}"
             read -r server_ip
             validar_IP "$server_ip" || return 1
 
-            echo -ne "${azul}Ingrese el Gateway: ${nc}"
+            echo -ne "${amarillo}Ingrese el Gateway: ${nc}"
             read -r GW
             validar_IP "$GW" || return 1
             GATEWAY=$GW
@@ -209,15 +209,13 @@ install_bind9() {
     }
 
     echo ""
-    print_info "═══════════════════════════════════════"
-    print_info "  Instalación de BIND9"
-    print_info "═══════════════════════════════════════"
+    print_info "--- Instalación de BIND9 ---"
 
     if verificar_Instalacion; then
         print_info "BIND9 ya está instalado"
-        echo -ne "${amarillo}¿Desea reconfigurar el servidor DNS? [s/N]: ${nc}"
+        echo -ne "${amarillo}¿Desea reconfigurar el servidor DNS? [y/n]: ${nc}"
         read -r reconf
-        if [[ ! "$reconf" =~ ^[Ss]$ ]]; then
+        if [[ ! "$reconf" =~ ^[Yy]$ ]]; then
             print_info "Operación cancelada"
             return 0
         fi
@@ -380,12 +378,13 @@ reiniciar_DNS() {
 }
 
 agregar_dominio() {
-    print_info "═══ Agregar Dominio ═══"
+    print_menu "--- Agregar Dominio ---"
+    server_ip=$(ip addr show enp0s8 | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)
 
-    echo -ne "${azul}Ingrese el nombre del dominio (ej: reprobados.com): ${nc}"
+    echo -ne "${amarillo}Ingrese el nombre del dominio (ej: reprobados.com): ${nc}"
     read -r nuevo_dominio
 
-    if ! validate_domain "$nuevo_dominio"; then
+    if ! validar_Dominio "$nuevo_dominio"; then
         print_warning "Dominio inválido, cancelando operación"
         return 1
     fi
@@ -396,9 +395,9 @@ agregar_dominio() {
     fi
 
     if [[ -n "$server_ip" ]]; then
-        echo -ne "${azul}Ingrese la IP para $nuevo_dominio [$server_ip]: ${nc}"
+        echo -ne "${amarillo}Ingrese la IP para $nuevo_dominio [$server_ip]: ${nc}"
     else
-        echo -ne "${azul}Ingrese la IP para $nuevo_dominio: ${nc}"
+        echo -ne "${amarillo}Ingrese la IP para $nuevo_dominio: ${nc}"
     fi
     read -r nueva_ip
 
@@ -406,7 +405,7 @@ agregar_dominio() {
         nueva_ip=$server_ip
     fi
 
-    if ! validar_IP "$nueva_ip"; then
+    if [[ ! validar_IP "$nueva_ip" ]]; then
         print_warning "IP inválida, cancelando operación"
         return 1
     fi
