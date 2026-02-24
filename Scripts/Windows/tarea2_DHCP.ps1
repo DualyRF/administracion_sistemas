@@ -156,25 +156,39 @@ function calcularBits {
     return $bits
 }
 
+# ---------------------------------------------------------------
+# configurar_IP_Estatica
+#   - Muestra las interfaces disponibles y pide al usuario elegir
+#   - Calcula ip_Servidor = ip_Inicial - 1  (igual que bash)
+#   - Sobreescribe siempre la configuracion IP de esa interfaz
+#   - Retorna $true si todo fue bien, $false si hubo error
+# ---------------------------------------------------------------
 function configurar_IP_Estatica {
     param(
-        [string]$ipInicial,
-        [string]$mascara,
-        [string]$gateway
+        [string]$ipInicial,   # primer IP del rango DHCP (ya validada)
+        [string]$mascara,     # máscara de subred (ya validada)
+        [string]$gateway      # gateway (puede ser "")
     )
 
     Write-Host "`n=== Configuracion de IP Estatica del Servidor ===" -ForegroundColor $amarillo
 
     # ---- Calcular ip_Servidor = ipInicial - 1 ------------------
+    # Caso especial: si el ultimo octeto ya es 0, se usa directamente como IP del servidor
     $octetos   = $ipInicial -split '\.'
     $ultimoOct = [int]$octetos[3]
 
-    if ($ultimoOct -le 1) {
-        Write-Host "No es posible restar 1 al ultimo octeto de $ipInicial (resultaria en X.X.X.0)" -ForegroundColor $rojo
+    if ($ultimoOct -eq 0) {
+        # X.X.X.0 se usa tal cual como IP del servidor (caso permitido explicitamente)
+        $ipServidor = $ipInicial
+    }
+    elseif ($ultimoOct -eq 1) {
+        Write-Host "No es posible restar 1 al ultimo octeto de $ipInicial (resultaria en X.X.X.0 sin ser el inicio del rango)" -ForegroundColor $rojo
+        Write-Host "Si desea usar X.X.X.0 como IP del servidor, ingrese directamente X.X.X.0 como rango inicial" -ForegroundColor $amarillo
         return $false
     }
-
-    $ipServidor = "$($octetos[0]).$($octetos[1]).$($octetos[2]).$($ultimoOct - 1)"
+    else {
+        $ipServidor = "$($octetos[0]).$($octetos[1]).$($octetos[2]).$($ultimoOct - 1)"
+    }
     $prefixLen  = calcularBits -masc $mascara
 
     Write-Host "IP que se asignara al servidor: " -NoNewline
@@ -263,6 +277,8 @@ function configurar_IP_Estatica {
         Write-Host "Advertencia: no se pudo verificar la IP asignada" -ForegroundColor $amarillo
     }
 
+    # ---- Devolver ip_Servidor para usarla en DHCP --------------
+    # (se guarda en variable de script para que configuracionDHCP la lea)
     $script:ipServidor = $ipServidor
     return $true
 }
@@ -297,27 +313,38 @@ function configuracionDHCP {
     do {
         $ipInicialServidor = Read-Host "Rango inicial de la IP (esta IP se usara para el servidor)"
 
-        if (validar_IP -ip $ipInicialServidor) {
-            $octetos   = $ipInicialServidor -split '\.'
-            $ultimoOct = [int]$octetos[3]
+        # validar_IP rechaza X.X.X.0, asi que extraemos octetos antes de validar
+        $octetos   = $ipInicialServidor -split '\.'
+        $ultimoOct = if ($octetos.Count -eq 4) { [int]$octetos[3] } else { -1 }
+        $formatoOk = $ipInicialServidor -match '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'
 
-            if ($ultimoOct -eq 255) {
-                Write-Host "No use X.X.X.255 como ultimo octeto" -ForegroundColor $rojo
+        if (-not $formatoOk) {
+            Write-Host "Formato de IP invalido" -ForegroundColor $rojo
+        }
+        elseif ($ultimoOct -eq 255) {
+            Write-Host "No use X.X.X.255 como ultimo octeto" -ForegroundColor $rojo
+        }
+        elseif ($ultimoOct -ge 254) {
+            Write-Host "El ultimo octeto debe dejar espacio para al menos una IP de rango encima" -ForegroundColor $rojo
+        }
+        elseif ($ultimoOct -eq 0) {
+            # Caso especial: X.X.X.0 es la IP del servidor, rango DHCP empieza en X.X.X.1
+            $ipInicial = "$($octetos[0]).$($octetos[1]).$($octetos[2]).1"
+            if (validar_IP -ip $ipInicial) {
+                $ipValida = $true
+                Write-Host "IP del servidor : $ipInicialServidor (X.X.X.0 permitido)" -ForegroundColor $verde
+                Write-Host "Rango DHCP desde: $ipInicial" -ForegroundColor $verde
             }
-            elseif ($ultimoOct -ge 254) {
-                Write-Host "El ultimo octeto debe dejar espacio para al menos una IP de rango encima" -ForegroundColor $rojo
-            }
-            else {
-                # ip_Servidor = ipInicialServidor  (se configurara estatica)
-                # ip_Inicial  = ipInicialServidor + 1  (primer IP que reparte DHCP)
-                $nuevoUltimo = $ultimoOct + 1
-                $ipInicial   = "$($octetos[0]).$($octetos[1]).$($octetos[2]).$nuevoUltimo"
+        }
+        elseif (validar_IP -ip $ipInicialServidor) {
+            # Caso normal: rango DHCP empieza en ip_Servidor + 1
+            $nuevoUltimo = $ultimoOct + 1
+            $ipInicial   = "$($octetos[0]).$($octetos[1]).$($octetos[2]).$nuevoUltimo"
 
-                if (validar_IP -ip $ipInicial) {
-                    $ipValida = $true
-                    Write-Host "IP del servidor : $ipInicialServidor" -ForegroundColor $verde
-                    Write-Host "Rango DHCP desde: $ipInicial"         -ForegroundColor $verde
-                }
+            if (validar_IP -ip $ipInicial) {
+                $ipValida = $true
+                Write-Host "IP del servidor : $ipInicialServidor" -ForegroundColor $verde
+                Write-Host "Rango DHCP desde: $ipInicial"         -ForegroundColor $verde
             }
         }
 
@@ -455,17 +482,12 @@ function configuracionDHCP {
         return
     }
 
-    # ---- Configurar IP estática ANTES de crear el scope --------
-    Write-Host "`n--- Paso 1/2: Configurar IP estatica del servidor ---" -ForegroundColor $azul
     $resultado = configurar_IP_Estatica -ipInicial $ipInicialServidor -mascara $mascara -gateway $gateway
 
     if (-not $resultado) {
         Write-Host "No se pudo configurar la IP estatica. Abortando configuracion DHCP." -ForegroundColor $rojo
         return
     }
-
-    # ---- Crear scope DHCP --------------------------------------
-    Write-Host "`n--- Paso 2/2: Crear scope DHCP ---" -ForegroundColor $azul
 
     try {
         $octetosIP   = $ipInicial -split '\.'
@@ -577,7 +599,7 @@ function configuracionDHCP_Predeterminada {
 }
 
 function instalacionDHCP {
-    Write-Host "`n=== Instalacion de DHCP Server ===" -ForegroundColor $amarillo
+    Write-Host "`n--- Instalacion de DHCP Server ---" -ForegroundColor $amarillo
 
     $dhcpEstado = Get-WindowsFeature -Name DHCP
 
@@ -655,7 +677,7 @@ function instalacionDHCP {
         }
     }
 
-    Write-Host "`n=== Configuracion de DHCP completada ===" -ForegroundColor $verde
+    Write-Host "`n--- Configuracion de DHCP completada ---" -ForegroundColor $verde
 }
 
 function verificar_Instalacion {
@@ -695,9 +717,7 @@ function verificar_Instalacion {
 
 function mostrarMenu {
     Clear-Host
-    Write-Host "=====================================" -ForegroundColor $azul
-    Write-Host "   Gestion de Servidor DHCP"          -ForegroundColor $verde
-    Write-Host "=====================================" -ForegroundColor $azul
+    Write-Host "--- Gestion de Servidor DHCP ---"          -ForegroundColor $verde
     Write-Host ""
     Write-Host "1. Verificar Instalacion"              -ForegroundColor $amarillo
     Write-Host "2. Instalar y Configurar DHCP"         -ForegroundColor $amarillo
