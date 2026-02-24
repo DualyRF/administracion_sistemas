@@ -156,35 +156,20 @@ function calcularBits {
     return $bits
 }
 
-# ---------------------------------------------------------------
-# configurar_IP_Estatica
-#   - Muestra las interfaces disponibles y pide al usuario elegir
-#   - Calcula ip_Servidor = ip_Inicial - 1  (igual que bash)
-#   - Sobreescribe siempre la configuracion IP de esa interfaz
-#   - Retorna $true si todo fue bien, $false si hubo error
-# ---------------------------------------------------------------
 function configurar_IP_Estatica {
     param(
-        [string]$ipInicial,   # primer IP del rango DHCP (ya validada)
-        [string]$mascara,     # máscara de subred (ya validada)
-        [string]$gateway      # gateway (puede ser "")
+        [string]$ipInicial,
+        [string]$mascara,
+        [string]$gateway 
     )
 
-    Write-Host "`n=== Configuracion de IP Estatica del Servidor ===" -ForegroundColor $amarillo
+    Write-Host "`n--- Configuracion de IP Estatica del Servidor ---" -ForegroundColor $amarillo
 
-    # ---- Calcular ip_Servidor = ipInicial - 1 ------------------
-    # Caso especial: si el ultimo octeto ya es 0, se usa directamente como IP del servidor
     $octetos   = $ipInicial -split '\.'
     $ultimoOct = [int]$octetos[3]
 
     if ($ultimoOct -eq 0) {
-        # X.X.X.0 se usa tal cual como IP del servidor (caso permitido explicitamente)
         $ipServidor = $ipInicial
-    }
-    elseif ($ultimoOct -eq 1) {
-        Write-Host "No es posible restar 1 al ultimo octeto de $ipInicial (resultaria en X.X.X.0 sin ser el inicio del rango)" -ForegroundColor $rojo
-        Write-Host "Si desea usar X.X.X.0 como IP del servidor, ingrese directamente X.X.X.0 como rango inicial" -ForegroundColor $amarillo
-        return $false
     }
     else {
         $ipServidor = "$($octetos[0]).$($octetos[1]).$($octetos[2]).$($ultimoOct - 1)"
