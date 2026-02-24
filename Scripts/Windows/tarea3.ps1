@@ -1,9 +1,4 @@
-$verde = "Green"
-$amarillo = "Yellow"
-$azul = "Cyan"
-$rojo = "Red"
-$nc = "White"
-$rosa = "Magenta"
+. "$PSScriptRoot\lib\utils.ps1"
 
 # ---------- Funciones ----------
 function agregarRegistro {

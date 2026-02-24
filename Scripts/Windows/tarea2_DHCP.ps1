@@ -1,57 +1,6 @@
-# Tarea 2 - Automatizacion y gestion del servidor DHCP
+. "$PSScriptRoot\lib\utils.ps1"
 
-# ---------- Variables globales ----------
-$verde    = "Green"
-$amarillo = "Yellow"
-$azul     = "Cyan"
-$rojo     = "Red"
-
-# ---------- Funciones de validacion ----------
-
-function validar_IP {
-    param([string]$ip)
-
-    if ($ip -notmatch '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$') {
-        Write-Host "IP invalida: formato incorrecto, use X.X.X.X" -ForegroundColor $rojo
-        return $false
-    }
-
-    $oct = $ip -split '\.'
-    $a = [int]$oct[0]
-
-    foreach ($o in $oct) {
-        if ($o.Length -gt 1 -and $o.StartsWith("0")) {
-            Write-Host "IP invalida: no se permiten ceros a la izquierda" -ForegroundColor $rojo
-            return $false
-        }
-        if ([int]$o -lt 0 -or [int]$o -gt 255) {
-            Write-Host "IP invalida: cada octeto debe estar entre 0 y 255" -ForegroundColor $rojo
-            return $false
-        }
-    }
-
-    if ($ip -eq "0.0.0.0" -or $ip -eq "255.255.255.255") {
-        Write-Host "IP invalida: no puede ser 0.0.0.0 ni 255.255.255.255" -ForegroundColor $rojo
-        return $false
-    }
-
-    if ($a -eq 127) {
-        Write-Host "IP invalida: rango 127.x.x.x reservado para localhost" -ForegroundColor $rojo
-        return $false
-    }
-
-    if ($a -ge 224 -and $a -le 239) {
-        Write-Host "IP invalida: rango 224-239 reservado para multicast" -ForegroundColor $rojo
-        return $false
-    }
-
-    if ($a -ge 240 -and $a -lt 255) {
-        Write-Host "IP invalida: rango 240-254 reservado para usos experimentales" -ForegroundColor $rojo
-        return $false
-    }
-
-    return $true
-}
+# ---------- Funciones de validacion especificas de DHCP ----------
 
 function validar_Mascara {
     param([string]$masc)
@@ -219,10 +168,10 @@ function monitorear_Clientes {
     }
 
     Write-Host ""
-    Write-Host "1. Ver todos los leases"        -ForegroundColor $amarillo
-    Write-Host "2. Ver solo leases activos"     -ForegroundColor $amarillo
-    Write-Host "3. Ver estadisticas"            -ForegroundColor $amarillo
-    Write-Host "4. Exportar reporte a archivo"  -ForegroundColor $amarillo
+    Write-Host "1. Ver todos los leases"       -ForegroundColor $amarillo
+    Write-Host "2. Ver solo leases activos"    -ForegroundColor $amarillo
+    Write-Host "3. Ver estadisticas"           -ForegroundColor $amarillo
+    Write-Host "4. Exportar reporte a archivo" -ForegroundColor $amarillo
     Write-Host ""
 
     $opc = Read-Host "Opcion"
@@ -274,8 +223,8 @@ function monitorear_Clientes {
                 Write-Host "  Activos: $cActivo"
             }
 
-            Write-Host "`nTotal leases   : $totalLeases"   -ForegroundColor $amarillo
-            Write-Host "Total activos  : $activosTotal"    -ForegroundColor $amarillo
+            Write-Host "`nTotal leases  : $totalLeases"  -ForegroundColor $amarillo
+            Write-Host "Total activos : $activosTotal"   -ForegroundColor $amarillo
             Write-Host "`nEstado del servicio:" -ForegroundColor $amarillo
             Get-Service DHCPServer | Select-Object Name, Status | Format-Table -AutoSize
         }
