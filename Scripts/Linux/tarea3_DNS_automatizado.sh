@@ -405,7 +405,7 @@ agregar_dominio() {
         nueva_ip=$server_ip
     fi
 
-    if [[ ! validar_IP "$nueva_ip" ]]; then
+    if ! validar_IP "$nueva_ip"; then
         print_warning "IP inválida, cancelando operación"
         return 1
     fi
