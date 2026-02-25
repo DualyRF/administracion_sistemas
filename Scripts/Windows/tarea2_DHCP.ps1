@@ -475,6 +475,8 @@ function configuracionDHCP {
             -SubnetMask $mascara `
             -State      Active
 
+        
+        
         if ($gateway -ne "") {
             Set-DhcpServerv4OptionValue -ScopeId $redStr -OptionId 3 -Value $gateway
         }

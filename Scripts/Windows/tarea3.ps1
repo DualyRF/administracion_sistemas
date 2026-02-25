@@ -393,7 +393,7 @@ function verificarInstalacion {
     }
 }
 
-function mostrarMenu {
+function mostrarMenuDHCP {
     ValidarIPFija
     Clear-Host
     Write-Host "----------------------------------" -ForegroundColor $azul
@@ -455,4 +455,4 @@ function mostrarMenu {
 }
 
 # ---------- Main ----------
-mostrarMenu
+mostrarMenuDNS
