@@ -523,17 +523,7 @@ EOF
 
 		# Configurar interfaz
 		interfaz="enp0s8"
-		print_info "Configurando interfaz de red..."
-		sudo bash -c "echo 'DHCPD_INTERFACE=\"$interfaz\"' > /etc/sysconfig/dhcpd"
-		
-		print_info "Configurando IP estática $ip_Servidor en la interfaz $interfaz..."
-		sudo ip addr flush dev $interfaz
-		sudo ip addr add $ip_Servidor/$( calcular_Bits "$mascara" ) dev $interfaz
-		sudo ip link set $interfaz up
-
-		# Configurar DNS
-		sed -i "1s/^/nameserver $server_ip\n/" /etc/resolv.conf
-
+# 1. Crear config permanente
 sudo bash -c "cat > /etc/sysconfig/network/ifcfg-$interfaz" << EOF
 BOOTPROTO='static'
 STARTMODE='auto'
@@ -541,9 +531,31 @@ IPADDR='$ip_Servidor'
 NETMASK='$mascara'
 EOF
 
-		# Reiniciar servicio
+		print_info "Configurando interfaz de red..."
+		sudo bash -c "echo 'DHCPD_INTERFACE=\"$interfaz\"' > /etc/sysconfig/dhcpd"
+
+		sudo wicked ifdown $interfaz
+		sudo wicked ifup $interfaz
+
 		print_info "Reiniciando servicio DHCP..."
 		sudo systemctl restart dhcpd
+
+		print_info "Configurando DNS en resolv.conf..."
+
+		# Limpiar nameservers anteriores
+		sudo sed -i '/^nameserver/d' /etc/resolv.conf
+
+		# Agregar DNS principal (siempre es el servidor mismo)
+		sudo sed -i "1s/^/nameserver $ip_Servidor\n/" /etc/resolv.conf
+
+		# Agregar DNS adicionales si fueron proporcionados
+		if [ -n "$dns" ]; then
+			sudo sed -i "2s/^/nameserver $dns\n/" /etc/resolv.conf
+		fi
+
+		if [ -n "$dns_Alt" ]; then
+			sudo sed -i "3s/^/nameserver $dns_Alt\n/" /etc/resolv.conf
+		fi
 		
 		print_success "IP estática $ip_Servidor configurada en $interfaz"
 
