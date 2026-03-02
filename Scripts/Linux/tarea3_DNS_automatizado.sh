@@ -225,19 +225,11 @@ install_bind9() {
         zypper refresh &>/dev/null
 
         print_info "Instalando paquete bind..."
-        if zypper install -y bind &>/dev/null; then
-            print_success "Paquete bind instalado correctamente"
-        else
-            print_warning "Error al instalar bind"
-            return 1
-        fi
+        zypper install -y bind &>/dev/null
 
         print_info "Instalando paquete bind-utils..."
-        if zypper install -y bind-utils &>/dev/null; then
-            print_success "Paquete bind-utils instalado correctamente"
-        else
-            print_warning "Error al instalar bind-utils (no crítico)"
-        fi
+        zypper install -y bind-utils &>/dev/null
+        
     fi
 
     print_info "Generando archivo de configuración $named_conf..."
@@ -275,6 +267,41 @@ zone "127.in-addr.arpa" {
     type master;
     file "127.in-addr.arpa.zone";
 };
+EOF
+
+    cat > "$zones_dir/0.in-addr.arpa.zone" <<EOF
+\$TTL 86400
+@ IN SOA localhost. root.localhost. (
+    1       ; Serial
+    3600    ; Refresh
+    1800    ; Retry
+    604800  ; Expire
+    86400 ) ; Minimum TTL
+@ IN NS localhost.
+EOF
+
+    cat > "$zones_dir/127.in-addr.arpa.zone" <<EOF
+\$TTL 86400
+@ IN SOA localhost. root.localhost. (
+    1       ; Serial
+    3600    ; Refresh
+    1800    ; Retry
+    604800  ; Expire
+    86400 ) ; Minimum TTL
+@ IN NS localhost.
+1 IN PTR localhost.
+EOF
+
+    cat > "$zones_dir/localhost.zone" <<EOF
+\$TTL 86400
+@ IN SOA localhost. root.localhost. (
+    1       ; Serial
+    3600    ; Refresh
+    1800    ; Retry
+    604800  ; Expire
+    86400 ) ; Minimum TTL
+@ IN NS  localhost.
+@ IN A   127.0.0.1
 EOF
 
     if named-checkconf "$named_conf" 2>/dev/null; then

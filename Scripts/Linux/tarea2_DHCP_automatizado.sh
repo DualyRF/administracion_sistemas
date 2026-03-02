@@ -532,7 +532,7 @@ EOF
 		sudo ip link set $interfaz up
 
 		# Configurar DNS
-		echo "nameserver $ip_Servidor" | sudo tee /etc/resolv.conf > /dev/null
+		sed -i "1s/^/nameserver $server_ip\n/" /etc/resolv.conf
 
 sudo bash -c "cat > /etc/sysconfig/network/ifcfg-$interfaz" << EOF
 BOOTPROTO='static'
