@@ -531,6 +531,9 @@ EOF
 		sudo ip addr add $ip_Servidor/$( calcular_Bits "$mascara" ) dev $interfaz
 		sudo ip link set $interfaz up
 
+		# Configurar DNS
+		echo "nameserver $ip_Servidor" | sudo tee /etc/resolv.conf > /dev/null
+
 sudo bash -c "cat > /etc/sysconfig/network/ifcfg-$interfaz" << EOF
 BOOTPROTO='static'
 STARTMODE='auto'
