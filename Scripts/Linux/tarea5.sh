@@ -42,17 +42,17 @@ verificar_Instalacion() {
     
     if rpm -q $PAQUETE &>/dev/null; then
         local version=$(rpm -q $PAQUETE --queryformat '%{VERSION}')
-        print_completado "vsftpd ya está instalado (versión: $version)"
+        print_success "vsftpd ya está instalado (versión: $version)"
         return 0
     fi
     
     if command -v vsftpd &>/dev/null; then
         local version=$(vsftpd -v 2>&1 | head -1)
-        print_completado "vsftpd encontrado: $version"
+        print_success "vsftpd encontrado: $version"
         return 0
     fi
     
-    print_error "vsftpd no está instalado"
+    print_warning "vsftpd no está instalado"
     return 1
 }
 
@@ -65,24 +65,24 @@ crear_Estructura_Base() {
     # Crear directorio raíz FTP si no existe
     if [ ! -d "$FTP_ROOT" ]; then
         sudo mkdir -p "$FTP_ROOT"
-        print_completado "Directorio raíz creado: $FTP_ROOT"
+        print_success "Directorio raíz creado: $FTP_ROOT"
     fi
     
     # Crear carpeta general (pública)
     if [ ! -d "$FTP_ROOT/general" ]; then
         sudo mkdir -p "$FTP_ROOT/general"
-        print_completado "Carpeta 'general' creada"
+        print_success "Carpeta 'general' creada"
     fi
     
     # Crear carpetas de grupos
     if [ ! -d "$FTP_ROOT/$GRUPO_REPROBADOS" ]; then
         sudo mkdir -p "$FTP_ROOT/$GRUPO_REPROBADOS"
-        print_completado "Carpeta '$GRUPO_REPROBADOS' creada"
+        print_success "Carpeta '$GRUPO_REPROBADOS' creada"
     fi
     
     if [ ! -d "$FTP_ROOT/$GRUPO_RECURSADORES" ]; then
         sudo mkdir -p "$FTP_ROOT/$GRUPO_RECURSADORES"
-        print_completado "Carpeta '$GRUPO_RECURSADORES' creada"
+        print_success "Carpeta '$GRUPO_RECURSADORES' creada"
     fi
     
     # Configurar permisos base
@@ -94,7 +94,7 @@ crear_Estructura_Base() {
     sudo chmod 770 "$FTP_ROOT/$GRUPO_REPROBADOS"
     sudo chmod 770 "$FTP_ROOT/$GRUPO_RECURSADORES"
     
-    print_completado "Estructura de directorios base configurada"
+    print_success "Estructura de directorios base configurada"
 }
 
 # ============================================================================
@@ -106,7 +106,7 @@ crear_Grupos() {
     # Crear grupo reprobados si no existe
     if ! getent group $GRUPO_REPROBADOS &>/dev/null; then
         sudo groupadd $GRUPO_REPROBADOS
-        print_completado "Grupo '$GRUPO_REPROBADOS' creado"
+        print_success "Grupo '$GRUPO_REPROBADOS' creado"
     else
         print_info "Grupo '$GRUPO_REPROBADOS' ya existe"
     fi
@@ -114,7 +114,7 @@ crear_Grupos() {
     # Crear grupo recursadores si no existe
     if ! getent group $GRUPO_RECURSADORES &>/dev/null; then
         sudo groupadd $GRUPO_RECURSADORES
-        print_completado "Grupo '$GRUPO_RECURSADORES' creado"
+        print_success "Grupo '$GRUPO_RECURSADORES' creado"
     else
         print_info "Grupo '$GRUPO_RECURSADORES' ya existe"
     fi
@@ -123,7 +123,7 @@ crear_Grupos() {
     sudo chgrp $GRUPO_REPROBADOS "$FTP_ROOT/$GRUPO_REPROBADOS"
     sudo chgrp $GRUPO_RECURSADORES "$FTP_ROOT/$GRUPO_RECURSADORES"
     
-    print_completado "Grupos configurados correctamente"
+    print_success "Grupos configurados correctamente"
 }
 
 # ============================================================================
@@ -204,12 +204,12 @@ userlist_file=/etc/vsftpd.user_list
 # rsa_private_key_file=/etc/ssl/private/vsftpd.key
 EOF
 
-    print_completado "Archivo de configuración vsftpd creado"
+    print_success "Archivo de configuración vsftpd creado"
     
     # Crear archivo de lista de usuarios vacío
     if [ ! -f /etc/vsftpd.user_list ]; then
         sudo touch /etc/vsftpd.user_list
-        print_completado "Archivo de lista de usuarios creado"
+        print_success "Archivo de lista de usuarios creado"
     fi
 }
 
@@ -237,9 +237,9 @@ instalar_FTP() {
         wait $pid
         
         if [ $? -eq 0 ]; then
-            print_completado "vsftpd instalado correctamente"
+            print_success "vsftpd instalado correctamente"
         else
-            print_error "Error en la instalación de vsftpd"
+            print_warning "Error en la instalación de vsftpd"
             return 1
         fi
     fi
@@ -261,9 +261,9 @@ instalar_FTP() {
     # 5. Habilitar y activar el servicio
     print_info "Habilitando servicio vsftpd en el arranque..."
     if sudo systemctl enable vsftpd 2>/dev/null; then
-        print_completado "Servicio vsftpd habilitado"
+        print_success "Servicio vsftpd habilitado"
     else
-        print_error "No se pudo habilitar el servicio vsftpd"
+        print_warning "No se pudo habilitar el servicio vsftpd"
         return 1
     fi
     
@@ -271,17 +271,17 @@ instalar_FTP() {
     if systemctl is-active --quiet vsftpd; then
         print_info "Servicio ya estaba activo, reiniciando..."
         if sudo systemctl restart vsftpd 2>/dev/null; then
-            print_completado "Servicio vsftpd reiniciado"
+            print_success "Servicio vsftpd reiniciado"
         else
-            print_error "Error al reiniciar el servicio vsftpd"
+            print_warning "Error al reiniciar el servicio vsftpd"
             return 1
         fi
     else
         if sudo systemctl start vsftpd 2>/dev/null; then
-            print_completado "Servicio vsftpd iniciado"
+            print_success "Servicio vsftpd iniciado"
         else
-            print_error "Error al iniciar el servicio vsftpd"
-            print_error "Revise los logs: journalctl -u vsftpd"
+            print_warning "Error al iniciar el servicio vsftpd"
+            print_warning "Revise los logs: journalctl -u vsftpd"
             return 1
         fi
     fi
@@ -291,19 +291,19 @@ instalar_FTP() {
     if command -v firewall-cmd &>/dev/null; then
         # Puerto de control FTP
         if sudo firewall-cmd --add-service=ftp --permanent 2>/dev/null; then
-            print_completado "Servicio FTP agregado al firewall (permanente)"
+            print_success "Servicio FTP agregado al firewall (permanente)"
         fi
         
         # Puertos pasivos
         if sudo firewall-cmd --add-port=40000-40100/tcp --permanent 2>/dev/null; then
-            print_completado "Puertos pasivos 40000-40100/tcp abiertos"
+            print_success "Puertos pasivos 40000-40100/tcp abiertos"
         fi
         
         if sudo firewall-cmd --reload 2>/dev/null; then
-            print_completado "Firewall recargado"
+            print_success "Firewall recargado"
         fi
     else
-        print_error "firewalld no encontrado, configure el firewall manualmente"
+        print_warning "firewalld no encontrado, configure el firewall manualmente"
         print_info "Abra el puerto 21 TCP y puertos 40000-40100 TCP"
     fi
     
@@ -313,38 +313,38 @@ instalar_FTP() {
     echo ""
     
     if systemctl is-active --quiet vsftpd; then
-        print_completado "Servicio vsftpd: activo y corriendo"
+        print_success "Servicio vsftpd: activo y corriendo"
     else
-        print_error "Servicio vsftpd: NO está corriendo"
+        print_warning "Servicio vsftpd: NO está corriendo"
         return 1
     fi
     
     if ss -tulnp 2>/dev/null | grep -q ":21 "; then
-        print_completado "Puerto 21: escuchando"
+        print_success "Puerto 21: escuchando"
     else
-        print_error "Puerto 21: NO está escuchando"
+        print_warning "Puerto 21: NO está escuchando"
     fi
     
     # 8. Obtener IP de la interfaz enp0s9
     local ip=$(ip addr show $INTERFAZ_RED 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)
     
     if [ -z "$ip" ]; then
-        print_error "No se pudo obtener la IP de la interfaz $INTERFAZ_RED"
+        print_warning "No se pudo obtener la IP de la interfaz $INTERFAZ_RED"
         print_info "Verifique que la interfaz esté configurada"
         ip=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1 | head -1)
     fi
     
     # 9. Resumen
     echo ""
-    print_completado "══════════════════════════════════════"
-    print_completado "  Servidor FTP listo"
-    print_completado "══════════════════════════════════════"
+    print_success "══════════════════════════════════════"
+    print_success "  Servidor FTP listo"
+    print_success "══════════════════════════════════════"
     print_info "  IP del servidor : ${verde}$ip${nc}"
     print_info "  Interfaz        : ${verde}$INTERFAZ_RED${nc}"
     print_info "  Puerto FTP      : ${verde}21${nc}"
     print_info "  Acceso anónimo  : ${verde}ftp://$ip/general${nc}"
     print_info "  Raíz FTP        : ${verde}$FTP_ROOT${nc}"
-    print_completado "══════════════════════════════════════"
+    print_success "══════════════════════════════════════"
     echo ""
     print_info "Ahora puede crear usuarios con: $0 -u"
 }
@@ -357,26 +357,26 @@ validar_Usuario() {
     
     # Verificar que no esté vacío
     if [ -z "$usuario" ]; then
-        print_error "El nombre de usuario no puede estar vacío"
+        print_warning "El nombre de usuario no puede estar vacío"
         return 1
     fi
     
     # Verificar longitud (3-32 caracteres)
     if [ ${#usuario} -lt 3 ] || [ ${#usuario} -gt 32 ]; then
-        print_error "El nombre de usuario debe tener entre 3 y 32 caracteres"
+        print_warning "El nombre de usuario debe tener entre 3 y 32 caracteres"
         return 1
     fi
     
     # Verificar formato (solo letras, números, guiones y guiones bajos)
     if [[ ! "$usuario" =~ ^[a-z][a-z0-9_-]*$ ]]; then
-        print_error "El nombre de usuario debe comenzar con letra minúscula"
-        print_error "y solo puede contener letras, números, guiones y guiones bajos"
+        print_warning "El nombre de usuario debe comenzar con letra minúscula"
+        print_warning "y solo puede contener letras, números, guiones y guiones bajos"
         return 1
     fi
     
     # Verificar que no exista
     if id "$usuario" &>/dev/null; then
-        print_error "El usuario '$usuario' ya existe en el sistema"
+        print_warning "El usuario '$usuario' ya existe en el sistema"
         return 1
     fi
     
@@ -391,7 +391,7 @@ validar_Contrasena() {
     
     # Verificar longitud mínima
     if [ ${#password} -lt 6 ]; then
-        print_error "La contraseña debe tener al menos 6 caracteres"
+        print_warning "La contraseña debe tener al menos 6 caracteres"
         return 1
     fi
     
@@ -411,18 +411,18 @@ crear_Usuario_FTP() {
     # Crear usuario del sistema sin home en /home
     # El home será /srv/ftp (enjaulado por vsftpd)
     if sudo useradd -m -d "$FTP_ROOT" -s /bin/bash -g "$grupo" "$usuario" 2>/dev/null; then
-        print_completado "Usuario del sistema creado"
+        print_success "Usuario del sistema creado"
     else
-        print_error "Error al crear usuario del sistema"
+        print_warning "Error al crear usuario del sistema"
         return 1
     fi
     
     # Establecer contraseña
     echo "$usuario:$password" | sudo chpasswd
     if [ $? -eq 0 ]; then
-        print_completado "Contraseña establecida"
+        print_success "Contraseña establecida"
     else
-        print_error "Error al establecer contraseña"
+        print_warning "Error al establecer contraseña"
         return 1
     fi
     
@@ -432,30 +432,30 @@ crear_Usuario_FTP() {
         sudo mkdir -p "$user_dir"
         sudo chown "$usuario:$grupo" "$user_dir"
         sudo chmod 755 "$user_dir"
-        print_completado "Directorio personal creado: $user_dir"
+        print_success "Directorio personal creado: $user_dir"
     fi
     
     # Agregar usuario a la lista de usuarios permitidos
     if ! grep -q "^$usuario$" /etc/vsftpd.user_list 2>/dev/null; then
         echo "$usuario" | sudo tee -a /etc/vsftpd.user_list > /dev/null
-        print_completado "Usuario agregado a la lista de acceso FTP"
+        print_success "Usuario agregado a la lista de acceso FTP"
     fi
     
     # Dar permisos de escritura en carpeta general usando ACL si está disponible
     if command -v setfacl &>/dev/null; then
         sudo setfacl -m u:${usuario}:rwx "$FTP_ROOT/general" 2>/dev/null && \
-            print_completado "Permisos ACL configurados en 'general'" || \
+            print_success "Permisos ACL configurados en 'general'" || \
             print_info "Usando permisos estándar en 'general'"
         
         # Dar permisos en carpeta de grupo
         sudo setfacl -m u:${usuario}:rwx "$FTP_ROOT/$grupo" 2>/dev/null && \
-            print_completado "Permisos ACL configurados en '$grupo'" || \
+            print_success "Permisos ACL configurados en '$grupo'" || \
             print_info "Usando permisos estándar en '$grupo'"
     else
         print_info "ACL no disponible, usando permisos estándar"
     fi
     
-    print_completado "Usuario '$usuario' creado exitosamente"
+    print_success "Usuario '$usuario' creado exitosamente"
     return 0
 }
 
@@ -467,7 +467,7 @@ cambiar_Grupo_Usuario() {
     
     # Verificar que el usuario existe
     if ! id "$usuario" &>/dev/null; then
-        print_error "El usuario '$usuario' no existe"
+        print_warning "El usuario '$usuario' no existe"
         return 1
     fi
     
@@ -487,7 +487,7 @@ cambiar_Grupo_Usuario() {
         1) nuevo_grupo="$GRUPO_REPROBADOS" ;;
         2) nuevo_grupo="$GRUPO_RECURSADORES" ;;
         *)
-            print_error "Opción inválida"
+            print_warning "Opción inválida"
             return 1
             ;;
     esac
@@ -499,16 +499,16 @@ cambiar_Grupo_Usuario() {
     
     # Cambiar grupo principal del usuario
     if sudo usermod -g "$nuevo_grupo" "$usuario"; then
-        print_completado "Usuario '$usuario' movido al grupo '$nuevo_grupo'"
+        print_success "Usuario '$usuario' movido al grupo '$nuevo_grupo'"
         
         # Actualizar permisos con ACL si está disponible
         if command -v setfacl &>/dev/null; then
             sudo setfacl -m u:${usuario}:rwx "$FTP_ROOT/$nuevo_grupo" 2>/dev/null
             sudo setfacl -x u:${usuario} "$FTP_ROOT/$grupo_actual" 2>/dev/null
-            print_completado "Permisos ACL actualizados"
+            print_success "Permisos ACL actualizados"
         fi
     else
-        print_error "Error al cambiar el grupo del usuario"
+        print_warning "Error al cambiar el grupo del usuario"
         return 1
     fi
 }
@@ -521,7 +521,7 @@ gestionar_Usuarios() {
     
     # Verificar que vsftpd esté instalado
     if ! verificar_Instalacion &>/dev/null; then
-        print_error "vsftpd no está instalado"
+        print_warning "vsftpd no está instalado"
         print_info "Ejecute primero: $0 -i"
         return 1
     fi
@@ -541,7 +541,7 @@ gestionar_Usuarios() {
             read -p "¿Cuántos usuarios desea crear?: " num_usuarios
             
             if ! [[ "$num_usuarios" =~ ^[0-9]+$ ]] || [ "$num_usuarios" -lt 1 ]; then
-                print_error "Número de usuarios inválido"
+                print_warning "Número de usuarios inválido"
                 return 1
             fi
             
@@ -567,7 +567,7 @@ gestionar_Usuarios() {
                         if [ "$password" == "$password2" ]; then
                             break
                         else
-                            print_error "Las contraseñas no coinciden"
+                            print_warning "Las contraseñas no coinciden"
                         fi
                     fi
                 done
@@ -584,7 +584,7 @@ gestionar_Usuarios() {
                     1) grupo="$GRUPO_REPROBADOS" ;;
                     2) grupo="$GRUPO_RECURSADORES" ;;
                     *)
-                        print_error "Opción inválida, asignando a '$GRUPO_REPROBADOS'"
+                        print_warning "Opción inválida, asignando a '$GRUPO_REPROBADOS'"
                         grupo="$GRUPO_REPROBADOS"
                         ;;
                 esac
@@ -592,9 +592,9 @@ gestionar_Usuarios() {
                 # Crear usuario
                 if crear_Usuario_FTP "$usuario" "$password" "$grupo"; then
                     echo ""
-                    print_completado "Usuario '$usuario' creado en grupo '$grupo'"
+                    print_success "Usuario '$usuario' creado en grupo '$grupo'"
                 else
-                    print_error "Error al crear usuario '$usuario'"
+                    print_warning "Error al crear usuario '$usuario'"
                 fi
             done
             
@@ -602,7 +602,7 @@ gestionar_Usuarios() {
             echo ""
             print_info "Reiniciando servicio vsftpd..."
             sudo systemctl restart vsftpd
-            print_completado "Servicio reiniciado"
+            print_success "Servicio reiniciado"
             ;;
             
         2)
@@ -627,7 +627,7 @@ gestionar_Usuarios() {
             read -p "Ingrese el nombre del usuario a eliminar: " usuario
             
             if ! id "$usuario" &>/dev/null; then
-                print_error "El usuario '$usuario' no existe"
+                print_warning "El usuario '$usuario' no existe"
                 return 1
             fi
             
@@ -642,7 +642,7 @@ gestionar_Usuarios() {
                 # Eliminar usuario del sistema
                 sudo userdel "$usuario"
                 
-                print_completado "Usuario '$usuario' eliminado"
+                print_success "Usuario '$usuario' eliminado"
                 
                 print_info "Reiniciando servicio vsftpd..."
                 sudo systemctl restart vsftpd
@@ -656,7 +656,7 @@ gestionar_Usuarios() {
             ;;
             
         *)
-            print_error "Opción inválida"
+            print_warning "Opción inválida"
             ;;
     esac
 }
@@ -698,7 +698,7 @@ listar_Estructura() {
     print_titulo "Estructura del Servidor FTP"
     
     if [ ! -d "$FTP_ROOT" ]; then
-        print_error "El directorio FTP no existe: $FTP_ROOT"
+        print_warning "El directorio FTP no existe: $FTP_ROOT"
         return 1
     fi
     
@@ -730,7 +730,7 @@ reiniciar_FTP() {
     print_info "Reiniciando servidor FTP..."
     
     if ! systemctl is-active --quiet vsftpd; then
-        print_error "El servicio vsftpd no está activo"
+        print_warning "El servicio vsftpd no está activo"
         read -p "¿Desea iniciarlo en lugar de reiniciarlo? (y/n): " opc
         if [[ "$opc" = "y" ]]; then
             sudo systemctl start vsftpd
@@ -742,10 +742,10 @@ reiniciar_FTP() {
     fi
     
     if systemctl is-active --quiet vsftpd; then
-        print_completado "Servidor vsftpd reiniciado correctamente"
+        print_success "Servidor vsftpd reiniciado correctamente"
         sudo systemctl status vsftpd --no-pager
     else
-        print_error "Error al reiniciar el servidor vsftpd"
+        print_warning "Error al reiniciar el servidor vsftpd"
         print_info "Ejecute: sudo journalctl -xeu vsftpd.service"
     fi
 }
@@ -766,7 +766,7 @@ ver_Estado() {
     if [ -n "$ip" ]; then
         print_info "IP de la interfaz $INTERFAZ_RED: $ip"
     else
-        print_error "No se pudo obtener la IP de $INTERFAZ_RED"
+        print_warning "No se pudo obtener la IP de $INTERFAZ_RED"
     fi
 }
 
@@ -774,7 +774,7 @@ ver_Estado() {
 # VERIFICAR PERMISOS DE ROOT
 # ============================================================================
 if [[ $EUID -ne 0 ]]; then
-    print_error "Este script debe ejecutarse como root o con sudo"
+    print_warning "Este script debe ejecutarse como root o con sudo"
     exit 1
 fi
 
