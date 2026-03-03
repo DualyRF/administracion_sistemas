@@ -225,14 +225,16 @@ function Crear-Estructura-Base {
         (New-ACLRule $ID_SYSTEM "FullControl")
     )
 
-    # --- Permisos LocalUser\Public (home anonimo): IUSR lectura
+    # --- Permisos LocalUser\Public (home anonimo)
+    # IUSR solo puede listar esta carpeta, pero NO su contenido directamente
+    # Solo llegara a ver 'general' porque es la unica subcarpeta
     Set-FolderACL -Path "$FTP_ROOT\LocalUser\Public" -Rules @(
         (New-ACLRule $ID_ADMINS "FullControl"),
         (New-ACLRule $ID_SYSTEM "FullControl"),
         (New-ACLRule $ID_IUSR   "ReadAndExecute")
     )
 
-    # --- Permisos general: autenticados escriben, IUSR lee
+    # --- Permisos general: autenticados escriben, IUSR solo lee
     Set-FolderACL -Path "$FTP_ROOT\LocalUser\Public\general" -Rules @(
         (New-ACLRule $ID_ADMINS "FullControl"),
         (New-ACLRule $ID_SYSTEM "FullControl"),
@@ -241,14 +243,15 @@ function Crear-Estructura-Base {
     )
     Print-Ok "Permisos 'general' configurados."
 
-    # --- Permisos carpetas de grupo: solo el grupo respectivo
+    # --- Permisos carpetas de grupo: IUSR sin acceso, solo el grupo respectivo
     foreach ($grupo in @($GRUPO_REPROBADOS, $GRUPO_RECURSADORES)) {
         Set-FolderACL -Path "$FTP_ROOT\LocalUser\$grupo" -Rules @(
             (New-ACLRule $ID_ADMINS "FullControl"),
             (New-ACLRule $ID_SYSTEM "FullControl"),
             (New-ACLRule $grupo     "Modify")
+            # IUSR no tiene regla aqui: sin acceso a carpetas de grupo
         )
-        Print-Ok "Permisos '$grupo' configurados."
+        Print-Ok "Permisos '$grupo' configurados (anonimo sin acceso)."
     }
 
     Print-Ok "Estructura base lista."
@@ -314,8 +317,17 @@ function Configurar-FTP {
         -Name "highDataChannelPort" -Value 40100
     Print-Ok "Puertos pasivos 40000-40100 configurados."
 
-    # Regla de autorizacion global: todos pueden leer y escribir
-    # (los permisos NTFS y el enjaulamiento controlan el acceso real)
+    # Limpiar reglas anteriores
+    Clear-WebConfiguration "/system.ftpServer/security/authorization" `
+        -PSPath "IIS:\" -Location $FTP_SITE_NAME -ErrorAction SilentlyContinue
+
+    # Anonimo: solo lectura (vera unicamente general por permisos NTFS)
+    Add-WebConfiguration "/system.ftpServer/security/authorization" `
+        -PSPath "IIS:\" -Location $FTP_SITE_NAME `
+        -Value @{ accessType="Allow"; users="?"; roles=""; permissions=1 } `
+        -ErrorAction SilentlyContinue
+
+    # Usuarios autenticados: lectura y escritura
     Add-WebConfiguration "/system.ftpServer/security/authorization" `
         -PSPath "IIS:\" -Location $FTP_SITE_NAME `
         -Value @{ accessType="Allow"; users="*"; roles=""; permissions=3 } `
