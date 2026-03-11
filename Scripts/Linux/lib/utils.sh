@@ -98,8 +98,23 @@ validar_puerto() {
         fi
     done
 
-    if ss -tuln 2>/dev/null | awk '{print $5}' | grep -q ":${puerto}$"; then
-        print_warning "[ERROR] Puerto $puerto ya está en uso por otro proceso."
+    local ss_output
+    ss_output=$(/usr/bin/ss -tulnp 2>/dev/null | grep ":${puerto}")
+
+    if [[ -n "$ss_output" ]]; then
+        # Extraer nombre del proceso desde users:(("nombre",pid=X,fd=X))
+        local proceso_raw proceso_nombre proceso_pid
+        proceso_raw=$(echo "$ss_output" | grep -oP 'users:\(\(.*?\)\)' | head -1)
+        proceso_nombre=$(echo "$proceso_raw" | grep -oP '(?<=")[^"]+(?=")' | head -1)
+        proceso_pid=$(echo "$proceso_raw" | grep -oP 'pid=\K[0-9]+' | head -1)
+
+        print_warning "[ERROR] Puerto $puerto ya está en uso."
+        if [[ -n "$proceso_nombre" ]]; then
+            print_warning "        Proceso : $proceso_nombre"
+            print_warning "        PID     : $proceso_pid"
+        else
+            print_warning "        (ejecuta como root para ver el proceso)"
+        fi
         return 1
     fi
 
@@ -159,6 +174,19 @@ abrir_puerto_firewall() {
     fi
 
     firewall-cmd --reload &>/dev/null
+
+    # Registrar el puerto en SELinux si está en modo Enforcing
+    if command -v getenforce &>/dev/null && [[ "$(getenforce)" == "Enforcing" ]]; then
+        if command -v semanage &>/dev/null; then
+            if ! semanage port -l 2>/dev/null | grep "http_port_t" | grep -q "${puerto}"; then
+                semanage port -a -t http_port_t -p tcp "$puerto" 2>/dev/null
+                print_info "[INFO] Puerto $puerto registrado en SELinux."
+            fi
+        else
+            print_info "[WARN] semanage no encontrado. Instala: zypper install -y policycoreutils-python-utils"
+        fi
+    fi
+
     print_success "[OK] Firewall actualizado. Puerto $puerto habilitado."
 }
 
@@ -218,7 +246,7 @@ crear_index() {
 </head>
 <body>
   <div class="card">
-    <h1>&#x2705; Servidor Activo</h1>
+    <h1>Servidor Activo</h1>
     <p>Servidor : <span>$servicio</span></p>
     <p>Versión  : <span>$version</span></p>
     <p>Puerto   : <span>$puerto</span></p>
