@@ -687,10 +687,10 @@ gestionar_Usuarios() {
                 done
 
                 while true; do
-                    read -rsp "Contraseña (mín. 8 caracteres): " password
+                    read -rp "Contraseña (mín. 8 caracteres): " password
                     echo ""
                     if validar_Contrasena "$password"; then
-                        read -rsp "Confirmar contraseña: " password2
+                        read -rp "Confirmar contraseña: " password2
                         echo ""
                         if [ "$password" == "$password2" ]; then
                             break
