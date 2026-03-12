@@ -361,7 +361,7 @@ aplicar_seguridad_nginx() {
 
     # Reescribir nginx.conf completo con todas las directivas correctas
     cat > "$nginx_conf" << NGINXEOF
-user nginx;
+user wwwrun;
 worker_processes auto;
 error_log /var/log/nginx/error.log;
 pid /run/nginx.pid;
@@ -415,7 +415,7 @@ iniciar_nginx() {
     # Crear directorio para el pid si no existe
     if [[ ! -d /run/nginx ]]; then
         mkdir -p /run/nginx
-        chown nginx:nginx /run/nginx
+        chown wwwrun:www /run/nginx
         chmod 755 /run/nginx
         print_info "[INFO] Directorio /run/nginx creado."
     fi
@@ -465,7 +465,7 @@ setup_nginx() {
     configurar_puerto_nginx      "$PUERTO_ELEGIDO"                            || return 1
     aplicar_seguridad_nginx                                                    || return 1
     abrir_puerto_firewall        "$PUERTO_ELEGIDO"                            || return 1
-    crear_usuario_servicio       "nginx" "/srv/www/nginx"                     || return 1
+    crear_usuario_servicio       "wwwrun" "/srv/www/nginx"                     || return 1
     crear_index "Nginx" "$VERSION_ELEGIDA" "$PUERTO_ELEGIDO" "/srv/www/nginx" || return 1
     iniciar_nginx                                                              || return 1
 
@@ -483,31 +483,41 @@ setup_nginx() {
 
 # -----------------------------------------------------------------------------
 # CONSULTAR VERSIONES DISPONIBLES DE TOMCAT
+# Consulta dlcdn.apache.org para obtener versiones reales (9.x, 10.x, 11.x)
 # Exporta: VERSION_ELEGIDA
 # -----------------------------------------------------------------------------
 obtener_versiones_tomcat() {
     print_title "Versiones disponibles de Tomcat"
 
-    if ! requiere_comando "zypper"; then return 1; fi
+    local base_url="https://dlcdn.apache.org/tomcat/"
+    local ramas
 
-    print_info "[INFO] Consultando repositorio, espera..."
+    print_info "[INFO] Consultando versiones en dlcdn.apache.org..."
 
-    local versiones
-    versiones=$(zypper search -s tomcat 2>/dev/null \
-        | awk -F'|' '$2 ~ /^ tomcat *$/ {print $4}' \
-        | tr -d ' ' \
-        | sort -V \
-        | uniq)
+    ramas=$(curl -s --max-time 8 "$base_url" 2>/dev/null \
+        | grep -oP 'tomcat-\K[0-9]+(?=/)' \
+        | sort -uV)
 
-    if [[ -z "$versiones" ]]; then
-        print_warning "[ERROR] No se encontraron versiones de Tomcat en el repositorio."
+    if [[ -z "$ramas" ]]; then
+        print_info "[INFO] Sin acceso a internet. Usando versiones de referencia."
+        ramas="9\n10\n11"
+    fi
+
+    local -a lista_versiones=()
+    while IFS= read -r rama; do
+        local latest
+        latest=$(curl -s --max-time 8 "${base_url}tomcat-${rama}/" 2>/dev/null \
+            | grep -oP "v\K[0-9]+\.[0-9]+\.[0-9]+" \
+            | sort -V | tail -1)
+        [[ -n "$latest" ]] && lista_versiones+=("$latest")
+    done <<< "$ramas"
+
+    if [[ ${#lista_versiones[@]} -eq 0 ]]; then
+        print_warning "[ERROR] No se encontraron versiones de Tomcat."
         return 1
     fi
 
-    local -a lista_versiones
-    mapfile -t lista_versiones <<< "$versiones"
     local total=${#lista_versiones[@]}
-
     local i=1
     for v in "${lista_versiones[@]}"; do
         print_menu "  [$i] $v"
@@ -538,41 +548,57 @@ obtener_versiones_tomcat() {
 }
 
 # -----------------------------------------------------------------------------
-# INSTALAR TOMCAT (silencioso)
+# INSTALAR TOMCAT (descarga directa desde dlcdn.apache.org)
 # -----------------------------------------------------------------------------
 instalar_tomcat() {
-    print_title "Instalando Tomcat"
+    print_title "Instalando Apache Tomcat $VERSION_ELEGIDA"
 
-    if [[ -z "$VERSION_ELEGIDA" ]]; then
-        print_warning "[ERROR] No hay versión elegida. Ejecuta obtener_versiones_tomcat primero."
-        return 1
+    # Verificar Java
+    if ! command -v java &>/dev/null; then
+        print_info "[INFO] Java no encontrado. Instalando OpenJDK 21..."
+        if ! zypper --non-interactive install java-21-openjdk java-21-openjdk-headless &>/dev/null; then
+            print_warning "[ERROR] No se pudo instalar Java."
+            return 1
+        fi
+        print_success "[OK] Java instalado."
+    else
+        print_info "[INFO] Java: $(java -version 2>&1 | head -1)"
     fi
 
-    if rpm -q tomcat &>/dev/null; then
-        print_info "[INFO] Tomcat ya está instalado. Omitiendo instalación."
+    # Si ya está instalado en /opt/tomcat, saltar descarga
+    if [[ -f /opt/tomcat/bin/startup.sh ]]; then
+        print_info "[INFO] Tomcat ya está instalado en /opt/tomcat. Omitiendo descarga."
         return 0
     fi
 
-    print_info "[INFO] Instalando tomcat-$VERSION_ELEGIDA ..."
+    local rama="${VERSION_ELEGIDA%%.*}"
+    local url="https://dlcdn.apache.org/tomcat/tomcat-${rama}/v${VERSION_ELEGIDA}/bin/apache-tomcat-${VERSION_ELEGIDA}.tar.gz"
+    local tarball="/tmp/apache-tomcat-${VERSION_ELEGIDA}.tar.gz"
 
-    if ! zypper install -n -y "tomcat=$VERSION_ELEGIDA" &>/dev/null; then
-        print_info "[WARN] Versión exacta no disponible, instalando versión del repositorio..."
-        if ! zypper install -n -y tomcat &>/dev/null; then
-            print_warning "[ERROR] Falló la instalación de Tomcat."
-            return 1
-        fi
+    print_info "[INFO] Descargando Tomcat $VERSION_ELEGIDA..."
+    if ! curl -L --progress-bar -o "$tarball" "$url" 2>&1; then
+        print_warning "[ERROR] Falló la descarga desde $url"
+        return 1
     fi
 
-    print_success "[OK] Tomcat instalado correctamente."
+    print_info "[INFO] Extrayendo en /opt/tomcat..."
+    mkdir -p /opt/tomcat
+    if ! tar xzf "$tarball" -C /opt/tomcat --strip-components=1; then
+        print_warning "[ERROR] Falló la extracción."
+        rm -f "$tarball"
+        return 1
+    fi
+    rm -f "$tarball"
+    print_success "[OK] Tomcat extraído en /opt/tomcat"
 }
 
 # -----------------------------------------------------------------------------
 # CONFIGURAR PUERTO DE TOMCAT
-# Edita: /etc/tomcat/server.xml  — atributo port del Connector HTTP
+# Edita /opt/tomcat/conf/server.xml
 # -----------------------------------------------------------------------------
 configurar_puerto_tomcat() {
     local puerto="$1"
-    local server_xml="/etc/tomcat/server.xml"
+    local server_xml="/opt/tomcat/conf/server.xml"
 
     print_title "Configurando puerto Tomcat"
 
@@ -584,12 +610,13 @@ configurar_puerto_tomcat() {
     cp "$server_xml" "${server_xml}.bak"
     print_info "[INFO] Backup creado: ${server_xml}.bak"
 
-    # Cambiar el puerto del Connector HTTP (no el AJP)
-    sed -i "s/port=\"8080\"/port=\"$puerto\"/" "$server_xml"
-    sed -i "s/port=\"8009\"/port=\"8009\"/" "$server_xml"
+    # Cambiar puerto HTTP y deshabilitar AJP
+    sed -i "s/port=\"8080\"/port=\"${puerto}\"/" "$server_xml"
+    sed -i 's/port="8009"/port="-1"/'               "$server_xml"
 
-    if grep -q "port=\"$puerto\"" "$server_xml"; then
+    if grep -q "port=\"${puerto}\"" "$server_xml"; then
         print_success "[OK] Puerto configurado a $puerto en $server_xml"
+        print_success "[OK] Conector AJP deshabilitado."
     else
         print_warning "[ERROR] No se pudo aplicar el cambio de puerto."
         cp "${server_xml}.bak" "$server_xml"
@@ -599,51 +626,60 @@ configurar_puerto_tomcat() {
 
 # -----------------------------------------------------------------------------
 # APLICAR HARDENING DE SEGURIDAD EN TOMCAT
-# - Oculta versión del servidor
-# - Deshabilita métodos peligrosos (TRACE)
-# - Agrega headers de seguridad via web.xml
 # -----------------------------------------------------------------------------
 aplicar_seguridad_tomcat() {
     print_title "Aplicando configuración de seguridad Tomcat"
 
-    local server_xml="/etc/tomcat/server.xml"
-    local web_xml="/etc/tomcat/web.xml"
+    local server_xml="/opt/tomcat/conf/server.xml"
+    local web_xml="/opt/tomcat/conf/web.xml"
 
-    # --- 1. Ocultar versión — agregar ServerInfo vacío via server.xml ---
-    if ! grep -q "ServerInfo" "$server_xml"; then
+    # --- 1. Ocultar versión via ErrorReportValve ---
+    if ! grep -q "showServerInfo" "$server_xml"; then
         sed -i "s|</Host>|    <Valve className=\"org.apache.catalina.valves.ErrorReportValve\" showReport=\"false\" showServerInfo=\"false\" />\n        </Host>|" "$server_xml"
     fi
     print_success "[OK] Versión del servidor ocultada."
 
-    # --- 2. Deshabilitar método TRACE en web.xml ---
-    if [[ -f "$web_xml" ]]; then
-        if ! grep -q "TRACE" "$web_xml"; then
-            sed -i "s|</web-app>|    <security-constraint>\n        <web-resource-collection>\n            <web-resource-name>Restricted Methods</web-resource-name>\n            <url-pattern>/*</url-pattern>\n            <http-method>TRACE</http-method>\n            <http-method>TRACK</http-method>\n        </web-resource-collection>\n        <auth-constraint />\n    </security-constraint>\n</web-app>|" "$web_xml"
-        fi
-        print_success "[OK] Métodos TRACE/TRACK deshabilitados."
+    # --- 2. Headers de seguridad en web.xml ---
+    if ! grep -q "httpHeaderSecurity" "$web_xml"; then
+        sed -i 's|</web-app>||' "$web_xml"
+        cat >> "$web_xml" << 'WEBEOF'
+    <filter>
+        <filter-name>httpHeaderSecurity</filter-name>
+        <filter-class>org.apache.catalina.filters.HttpHeaderSecurityFilter</filter-class>
+        <init-param>
+            <param-name>antiClickJackingOption</param-name>
+            <param-value>SAMEORIGIN</param-value>
+        </init-param>
+        <init-param>
+            <param-name>blockContentTypeSniffingEnabled</param-name>
+            <param-value>true</param-value>
+        </init-param>
+    </filter>
+    <filter-mapping>
+        <filter-name>httpHeaderSecurity</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+</web-app>
+WEBEOF
     fi
-
-    # --- 3. Agregar headers de seguridad via FilterDef en web.xml ---
-    if [[ -f "$web_xml" ]] && ! grep -q "X-Frame-Options" "$web_xml"; then
-        sed -i "s|</web-app>|    <filter>\n        <filter-name>SecurityHeaders</filter-name>\n        <filter-class>org.apache.catalina.filters.HttpHeaderSecurityFilter</filter-class>\n        <init-param><param-name>antiClickJackingEnabled</param-name><param-value>true</param-value></init-param>\n        <init-param><param-name>antiClickJackingOption</param-name><param-value>SAMEORIGIN</param-value></init-param>\n        <init-param><param-name>blockContentTypeSniffingEnabled</param-name><param-value>true</param-value></init-param>\n    </filter>\n    <filter-mapping>\n        <filter-name>SecurityHeaders</filter-name>\n        <url-pattern>/*</url-pattern>\n    </filter-mapping>\n</web-app>|" "$web_xml"
-        print_success "[OK] Headers de seguridad añadidos via HttpHeaderSecurityFilter."
-    fi
-
+    print_success "[OK] Headers de seguridad configurados en web.xml."
     print_success "[OK] Hardening de Tomcat aplicado."
 }
 
 # -----------------------------------------------------------------------------
-# CREAR INDEX.JSP PERSONALIZADO PARA TOMCAT
-# Tomcat sirve desde /var/lib/tomcat/webapps/ROOT
+# CREAR INDEX.HTML PARA TOMCAT
 # -----------------------------------------------------------------------------
 crear_index_tomcat() {
     local version="$1"
     local puerto="$2"
-    local ruta_web="/var/lib/tomcat/webapps/ROOT"
+    local ruta_web="/opt/tomcat/webapps/ROOT"
 
     mkdir -p "$ruta_web"
 
-    cat > "${ruta_web}/index.jsp" <<EOF
+    # Eliminar index.jsp por defecto si existe
+    rm -f "${ruta_web}/index.jsp"
+
+    cat > "${ruta_web}/index.html" << EOF
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -660,31 +696,76 @@ crear_index_tomcat() {
 </head>
 <body>
   <div class="card">
-    <h1>&#x2705; Servidor Activo</h1>
-    <p>Servidor : <span>Tomcat</span></p>
+    <h1>Servidor Activo</h1>
+    <p>Servidor : <span>Apache Tomcat</span></p>
     <p>Versión  : <span>$version</span></p>
     <p>Puerto   : <span>$puerto</span></p>
   </div>
 </body>
 </html>
 EOF
-
-    print_success "[OK] index.jsp creado en $ruta_web"
+    print_success "[OK] index.html creado en $ruta_web"
 }
 
 # -----------------------------------------------------------------------------
-# HABILITAR Y ARRANCAR TOMCAT
+# CREAR USUARIO Y SERVICIO SYSTEMD PARA TOMCAT
 # -----------------------------------------------------------------------------
 iniciar_tomcat() {
     print_title "Iniciando servicio Tomcat"
 
+    # Crear usuario tomcat si no existe
+    if ! id "tomcat" &>/dev/null; then
+        useradd -r -s /sbin/nologin -d /opt/tomcat -M tomcat
+        print_success "[OK] Usuario tomcat creado."
+    else
+        print_info "[INFO] Usuario tomcat ya existe."
+    fi
+
+    # Permisos
+    chown -R tomcat:tomcat /opt/tomcat
+    chmod 750 /opt/tomcat
+    chmod 750 /opt/tomcat/conf
+    print_success "[OK] Permisos aplicados -> tomcat:tomcat (chmod 750)."
+
+    # Detectar JAVA_HOME
+    local java_home
+    java_home=$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")
+
+    # Crear unit de systemd
+    cat > /etc/systemd/system/tomcat.service << SVCEOF
+[Unit]
+Description=Apache Tomcat ${VERSION_ELEGIDA}
+After=network.target
+
+[Service]
+Type=forking
+User=tomcat
+Group=tomcat
+Environment="JAVA_HOME=${java_home}"
+Environment="CATALINA_HOME=/opt/tomcat"
+Environment="CATALINA_BASE=/opt/tomcat"
+Environment="CATALINA_PID=/opt/tomcat/temp/tomcat.pid"
+Environment="CATALINA_OPTS=-Xms256M -Xmx512M"
+ExecStart=/opt/tomcat/bin/startup.sh
+ExecStop=/opt/tomcat/bin/shutdown.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+    systemctl daemon-reload
     systemctl enable tomcat &>/dev/null
-    systemctl restart tomcat
+    systemctl restart tomcat &>/dev/null
+
+    print_info "[INFO] Esperando que Tomcat inicie (15s)..."
+    sleep 15
 
     if systemctl is-active --quiet tomcat; then
         print_success "[OK] Tomcat activo y corriendo."
     else
-        print_warning "[ERROR] Tomcat no pudo iniciar. Revisa: journalctl -xe"
+        print_warning "[ERROR] Tomcat no pudo iniciar. Revisa: journalctl -u tomcat -n 20"
         return 1
     fi
 }
@@ -694,15 +775,14 @@ iniciar_tomcat() {
 # Llamada única desde main.sh
 # -----------------------------------------------------------------------------
 setup_tomcat() {
-    obtener_versiones_tomcat                                                       || return 1
-    pedir_puerto                                                                   || return 1
-    instalar_tomcat                                                                || return 1
-    configurar_puerto_tomcat     "$PUERTO_ELEGIDO"                                || return 1
-    aplicar_seguridad_tomcat                                                       || return 1
-    abrir_puerto_firewall        "$PUERTO_ELEGIDO"                                || return 1
-    crear_usuario_servicio       "tomcat" "/var/lib/tomcat"                       || return 1
-    crear_index_tomcat           "$VERSION_ELEGIDA" "$PUERTO_ELEGIDO"             || return 1
-    iniciar_tomcat                                                                 || return 1
+    obtener_versiones_tomcat                                          || return 1
+    pedir_puerto                                                      || return 1
+    instalar_tomcat                                                   || return 1
+    configurar_puerto_tomcat   "$PUERTO_ELEGIDO"                     || return 1
+    aplicar_seguridad_tomcat                                          || return 1
+    abrir_puerto_firewall      "$PUERTO_ELEGIDO"                     || return 1
+    crear_index_tomcat         "$VERSION_ELEGIDA" "$PUERTO_ELEGIDO"  || return 1
+    iniciar_tomcat                                                    || return 1
 
     echo ""
     print_success "================================================"
@@ -710,4 +790,113 @@ setup_tomcat() {
     print_success "  URL : http://localhost:$PUERTO_ELEGIDO"
     print_success "  Ver.: $VERSION_ELEGIDA"
     print_success "================================================"
+}
+
+# =============================================================================
+# VERIFICAR ESTADO DE SERVIDORES
+# =============================================================================
+verificar_HTTP() {
+    print_title "Estado de Servidores HTTP"
+
+    # --- Apache2 ---
+    echo -ne "  ${amarillo}Apache2  :${nc} "
+    if rpm -q apache2 &>/dev/null; then
+        local ver_apache
+        ver_apache=$(rpm -q apache2 --queryformat '%{VERSION}')
+        if systemctl is-active --quiet apache2; then
+            local puerto_apache
+            puerto_apache=$(/usr/bin/ss -tulnp | grep -E 'httpd|apache2' | grep -oP ':\K[0-9]+' | head -1)
+            echo -e "${verde}Instalado y activo${nc} — version: $ver_apache — puerto: ${puerto_apache:-?}"
+        else
+            echo -e "${amarillo}Instalado pero detenido${nc} — version: $ver_apache"
+        fi
+    else
+        echo -e "${rojo}No instalado${nc}"
+    fi
+
+    # --- Nginx ---
+    echo -ne "  ${amarillo}Nginx    :${nc} "
+    if rpm -q nginx &>/dev/null; then
+        local ver_nginx
+        ver_nginx=$(rpm -q nginx --queryformat '%{VERSION}')
+        if systemctl is-active --quiet nginx; then
+            local puerto_nginx
+            puerto_nginx=$(/usr/bin/ss -tulnp | grep nginx | grep -oP ':\K[0-9]+' | head -1)
+            echo -e "${verde}Instalado y activo${nc} — version: $ver_nginx — puerto: ${puerto_nginx:-?}"
+        else
+            echo -e "${amarillo}Instalado pero detenido${nc} — version: $ver_nginx"
+        fi
+    else
+        echo -e "${rojo}No instalado${nc}"
+    fi
+
+    # --- Tomcat ---
+    echo -ne "  ${amarillo}Tomcat   :${nc} "
+    if [[ -f /opt/tomcat/bin/startup.sh ]]; then
+        local ver_tomcat
+        ver_tomcat=$(/opt/tomcat/bin/version.sh 2>/dev/null | grep "Server version" | grep -oP 'Tomcat/\K[0-9]+\.[0-9]+\.[0-9]+')
+        if systemctl is-active --quiet tomcat 2>/dev/null; then
+            local puerto_tomcat
+            puerto_tomcat=$(/usr/bin/ss -tulnp | grep java | grep -oP '\*:\K[0-9]+' | head -1)
+            echo -e "${verde}Instalado y activo${nc} — version: ${ver_tomcat:-?} — puerto: ${puerto_tomcat:-?}"
+        else
+            echo -e "${amarillo}Instalado pero detenido${nc} — version: ${ver_tomcat:-?}"
+        fi
+    else
+        echo -e "${rojo}No instalado${nc}"
+    fi
+
+    echo ""
+}
+
+# =============================================================================
+# REVISAR RESPUESTA HTTP (curl -I)
+# =============================================================================
+_curl_servidor() {
+    local nombre="$1"
+    local puerto="$2"
+
+    print_title "$nombre (puerto $puerto)"
+    echo -e "${amarillo}Headers:${nc}"
+    curl -sI "http://localhost:${puerto}"
+    echo ""
+    echo -e "${amarillo}Index:${nc}"
+    curl -s "http://localhost:${puerto}"
+    echo ""
+}
+
+revisar_HTTP() {
+    print_title "Revisión de Servidores HTTP"
+    print_menu "  [1] Apache2"
+    print_menu "  [2] Nginx"
+    print_menu "  [3] Tomcat"
+    print_menu "  [4] Todos"
+    echo ""
+
+    local opcion
+    while true; do
+        echo -ne "${cyan}Selecciona [1-4]: ${nc}"
+        read -r opcion
+        opcion="${opcion//[^0-9]/}"
+        [[ "$opcion" =~ ^[1234]$ ]] && break
+        print_warning "[ERROR] Opción inválida."
+    done
+
+    echo ""
+
+    local puerto_apache puerto_nginx puerto_tomcat
+    puerto_apache=$(/usr/bin/ss -tulnp | grep -E 'httpd|apache2' | grep -oP ':\K[0-9]+' | head -1)
+    puerto_nginx=$(/usr/bin/ss -tulnp  | grep nginx               | grep -oP ':\K[0-9]+' | head -1)
+    puerto_tomcat=$(/usr/bin/ss -tulnp | grep java                | grep -oP '\*:\K[0-9]+' | head -1)
+
+    case "$opcion" in
+        1) _curl_servidor "Apache2" "${puerto_apache:-80}"   ;;
+        2) _curl_servidor "Nginx"   "${puerto_nginx:-8080}"  ;;
+        3) _curl_servidor "Tomcat"  "${puerto_tomcat:-8888}" ;;
+        4)
+            _curl_servidor "Apache2" "${puerto_apache:-80}"
+            _curl_servidor "Nginx"   "${puerto_nginx:-8080}"
+            _curl_servidor "Tomcat"  "${puerto_tomcat:-8888}"
+            ;;
+    esac
 }

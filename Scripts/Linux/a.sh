@@ -1,1 +1,4 @@
-journalctl -xe --unit=apache2 --no-pager | tail -30
+rm /var/lib/tomcat/webapps/ROOT/index.jsp
+chmod 644 /var/lib/tomcat/webapps/ROOT/index.html
+systemctl restart tomcat
+curl -I http://localhost:8888
