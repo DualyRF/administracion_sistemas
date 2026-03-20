@@ -178,9 +178,14 @@ abrir_puerto_firewall() {
     # Registrar el puerto en SELinux si está en modo Enforcing
     if command -v getenforce &>/dev/null && [[ "$(getenforce)" == "Enforcing" ]]; then
         if command -v semanage &>/dev/null; then
-            if ! semanage port -l 2>/dev/null | grep "http_port_t" | grep -q "${puerto}"; then
-                semanage port -a -t http_port_t -p tcp "$puerto" 2>/dev/null
-                print_info "[INFO] Puerto $puerto registrado en SELinux."
+            if semanage port -l 2>/dev/null | grep "http_port_t" | grep -qw "$puerto"; then
+                print_info "[INFO] Puerto $puerto ya permitido en SELinux."
+            elif semanage port -a -t http_port_t -p tcp "$puerto" 2>/dev/null; then
+                print_success "[OK] Puerto $puerto registrado en SELinux."
+            elif semanage port -m -t http_port_t -p tcp "$puerto" 2>/dev/null; then
+                print_success "[OK] Puerto $puerto modificado en SELinux."
+            else
+                print_info "[INFO] No se pudo configurar SELinux para puerto $puerto (puede ser normal)."
             fi
         else
             print_info "[WARN] semanage no encontrado. Instala: zypper install -y policycoreutils-python-utils"
@@ -246,7 +251,7 @@ crear_index() {
 </head>
 <body>
   <div class="card">
-    <h1>Servidor Activo</h1>
+    <h1>&#x2705; Servidor Activo</h1>
     <p>Servidor : <span>$servicio</span></p>
     <p>Versión  : <span>$version</span></p>
     <p>Puerto   : <span>$puerto</span></p>
