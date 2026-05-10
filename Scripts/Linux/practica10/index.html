@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Servidor Web · Práctica Docker</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/svg+xml" href="/images/logo.svg">
+</head>
+<body>
+    <header class="hero">
+        <img src="/images/logo.svg" alt="Logo" class="logo">
+        <h1>Servidor Web</h1>
+        <p class="subtitle">Práctica de migración a contenedores</p>
+    </header>
+
+    <main class="container">
+        <section class="info">
+            <h3>Recursos asignados por contenedor</h3>
+            <ul>
+                <li><code>infra_web</code> · 512 MiB RAM · 0.50 CPU</li>
+                <li><code>infra_db</code> · 512 MiB RAM · 0.75 CPU</li>
+                <li><code>infra_ftp</code> · 256 MiB RAM · 0.25 CPU</li>
+                <li><code>infra_backup</code> · 128 MiB RAM · 0.10 CPU</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <p>Nginx sobre Alpine · puerto 8080</p>
+    </footer>
+</body>
+</html>
