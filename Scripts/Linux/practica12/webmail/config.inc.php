@@ -18,14 +18,11 @@ $config['imap_conn_options'] = [
     'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
 ];
 
-// Servidor SMTP
-$config['smtp_server'] = 'tls://mailserver';
-$config['smtp_port'] = 587;
-$config['smtp_user'] = '%u';
-$config['smtp_pass'] = '%p';
-$config['smtp_conn_options'] = [
-    'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
-];
+// Servidor SMTP (puerto 25 interno Docker, sin TLS — la red Docker es privada)
+$config['smtp_server'] = 'mailserver';
+$config['smtp_port'] = 25;
+$config['smtp_user'] = '';
+$config['smtp_pass'] = '';
 $config['smtp_user'] = '%u';
 $config['smtp_pass'] = '%p';
 $config['smtp_conn_options'] = [
