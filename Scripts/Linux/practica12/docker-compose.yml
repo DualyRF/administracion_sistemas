@@ -38,6 +38,12 @@ services:
       - RC_DB_PASSWORD=${RC_DB_PASSWORD}
       - RC_DB_NAME=${RC_DB_NAME}
       - RC_DES_KEY=${RC_DES_KEY}
+      - ROUNDCUBEMAIL_DEFAULT_HOST=tls://mailserver
+      - ROUNDCUBEMAIL_DEFAULT_PORT=143
+      - ROUNDCUBEMAIL_SMTP_SERVER=tls://mailserver
+      - ROUNDCUBEMAIL_SMTP_PORT=587
+      - ROUNDCUBEMAIL_SMTP_USER=%u
+      - ROUNDCUBEMAIL_SMTP_PASS=%p
     depends_on:
       roundcube_db:
         condition: service_healthy
