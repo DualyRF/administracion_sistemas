@@ -34,6 +34,9 @@ if [ ! -f config/ssl/mail.reprobados.com-cert.pem ]; then
         -subj "/CN=mail.reprobados.com" \
         -out config/ssl/mail.reprobados.com-cert.pem \
         -keyout config/ssl/mail.reprobados.com-key.pem
+    cat config/ssl/mail.reprobados.com-cert.pem \
+        config/ssl/mail.reprobados.com-key.pem \
+        > config/ssl/mail.reprobados.com-full.pem
     echo "[OK] Certificado generado en config/ssl/"
 else
     echo "[OK] Certificado SSL ya existe"
