@@ -12,12 +12,20 @@ $config['db_dsnw'] = sprintf(
 $config['des_key'] = getenv('RC_DES_KEY') ?: 'reprobados_clave_24chars!';
 
 // Servidor IMAP
-$config['default_host'] = 'mailserver';
+$config['default_host'] = 'tls://mailserver';
 $config['default_port'] = 143;
+$config['imap_conn_options'] = [
+    'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
+];
 
 // Servidor SMTP
-$config['smtp_server'] = 'mailserver';
-$config['smtp_port'] = 25;
+$config['smtp_server'] = 'tls://mailserver';
+$config['smtp_port'] = 587;
+$config['smtp_user'] = '%u';
+$config['smtp_pass'] = '%p';
+$config['smtp_conn_options'] = [
+    'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
+];
 $config['smtp_user'] = '%u';
 $config['smtp_pass'] = '%p';
 $config['smtp_conn_options'] = [
