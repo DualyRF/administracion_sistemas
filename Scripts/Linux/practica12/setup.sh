@@ -44,10 +44,11 @@ fi
 # Crear archivo de cuentas si no existe (evita error de permisos en primera ejecución)
 touch config/postfix-accounts.cf
 
-# Fijar permisos para que el contenedor pueda escribir (SELinux)
+# Fijar permisos para que los contenedores puedan escribir (SELinux)
 chmod -R 777 config/
 chmod -R 777 logs/
-echo "[OK] Permisos de config/ y logs/ ajustados"
+chmod -R 777 backups/
+echo "[OK] Permisos de config/, logs/ y backups/ ajustados"
 
 # Añadir entrada a /etc/hosts si no existe
 if ! grep -q "reprobados.com" /etc/hosts 2>/dev/null; then
