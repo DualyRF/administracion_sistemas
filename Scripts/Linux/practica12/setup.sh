@@ -62,34 +62,39 @@ docker compose down 2>/dev/null || true
 echo "[..] Levantando contenedores..."
 docker compose up -d --build
 
-# Esperar a que mailserver esté listo (máximo 120 segundos)
-echo "[..] Esperando que mailserver inicialice..."
-for i in $(seq 1 24); do
+# Crear cuentas de correo (el mailserver las necesita para inicializar)
+# Reintenta durante 90 segundos hasta que el contenedor acepte comandos
+echo "[..] Creando cuentas de correo (esperando que el contenedor arranque)..."
+CUENTAS_OK=0
+for i in $(seq 1 18); do
+    if docker exec mailserver setup email add dualy@reprobados.com 'PassSegura1!' 2>/dev/null; then
+        echo "[OK] Cuenta dualy@reprobados.com creada"
+        docker exec mailserver setup email add admin@reprobados.com 'PassSegura2!' 2>/dev/null && \
+            echo "[OK] Cuenta admin@reprobados.com creada" || \
+            echo "[WARN] admin@reprobados.com ya existe o falló"
+        CUENTAS_OK=1
+        break
+    fi
+    echo "    Reintentando... ($((i * 5))s)"
+    sleep 5
+done
+
+if [ "$CUENTAS_OK" = "0" ]; then
+    echo "[ERROR] No se pudieron crear las cuentas. Revisa: docker compose logs mailserver"
+    exit 1
+fi
+
+# Esperar a que mailserver termine de inicializar tras tener cuentas
+echo "[..] Esperando que mailserver complete la inicialización..."
+for i in $(seq 1 12); do
     STATUS=$(docker inspect --format='{{.State.Health.Status}}' mailserver 2>/dev/null || echo "starting")
     if [ "$STATUS" = "healthy" ]; then
         echo "[OK] mailserver listo"
         break
     fi
-    if [ "$STATUS" = "unhealthy" ]; then
-        # Si está unhealthy pero el puerto SMTP responde, igual podemos crear cuentas
-        if docker exec mailserver ss -tlnp 2>/dev/null | grep -q ':25'; then
-            echo "[OK] mailserver respondiendo en SMTP"
-            break
-        fi
-    fi
-    echo "    Esperando... ($((i * 5))s)"
+    echo "    Estado: $STATUS ($((i * 5))s)"
     sleep 5
 done
-
-# Crear cuentas de correo
-echo "[..] Creando cuentas de correo..."
-docker exec mailserver setup email add dualy@reprobados.com 'PassSegura1!' && \
-    echo "[OK] Cuenta dualy@reprobados.com creada" || \
-    echo "[WARN] La cuenta dualy@reprobados.com ya existe o falló"
-
-docker exec mailserver setup email add admin@reprobados.com 'PassSegura2!' && \
-    echo "[OK] Cuenta admin@reprobados.com creada" || \
-    echo "[WARN] La cuenta admin@reprobados.com ya existe o falló"
 
 # Generar claves DKIM
 echo "[..] Generando claves DKIM..."
