@@ -31,7 +31,7 @@ services:
     image: roundcube/roundcubemail:latest-apache
     container_name: roundcube
     volumes:
-      - ./webmail/config.inc.php:/var/www/html/config/config.inc.php
+      - ./webmail/config.inc.php:/var/www/html/config/config.inc.php:z
       - roundcube_temp:/tmp/roundcube-temp
     environment:
       - RC_DB_USER=${RC_DB_USER}
@@ -89,7 +89,7 @@ services:
     container_name: mail_backup
     volumes:
       - mail_data:/var/mail:ro
-      - ./backups:/backups
+      - ./backups:/backups:z
     restart: unless-stopped
     networks:
       - mail_net
