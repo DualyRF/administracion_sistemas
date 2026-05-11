@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "======================================================"
 echo "  Setup — Práctica 12: Servidor de Correo Privado"
@@ -24,7 +24,7 @@ if [ ! -f config/ssl/mail.reprobados.com-cert.pem ]; then
     openssl req -new -x509 -days 365 -nodes \
         -subj "/CN=mail.reprobados.com" \
         -out config/ssl/mail.reprobados.com-cert.pem \
-        -keyout config/ssl/mail.reprobados.com-key.pem 2>/dev/null
+        -keyout config/ssl/mail.reprobados.com-key.pem
     echo "[OK] Certificado generado en config/ssl/"
 else
     echo "[OK] Certificado SSL ya existe"
