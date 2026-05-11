@@ -5,15 +5,6 @@ echo "======================================================"
 echo "  Setup — Práctica 12: Servidor de Correo Privado"
 echo "======================================================"
 
-# Instalar openssl si no está disponible
-if ! command -v openssl &>/dev/null; then
-    echo "[..] Instalando openssl..."
-    zypper install -y openssl
-    echo "[OK] openssl instalado"
-else
-    echo "[OK] openssl disponible"
-fi
-
 # Crear .env si no existe
 if [ ! -f .env ]; then
     cp .env.example .env
@@ -27,19 +18,27 @@ mkdir -p config/ssl logs backups
 touch backups/.gitkeep
 echo "[OK] Directorios creados: config/ config/ssl/ logs/ backups/"
 
-# Generar certificado SSL self-signed si no existe
-if [ ! -f config/ssl/mail.reprobados.com-cert.pem ]; then
-    echo "[..] Generando certificado SSL self-signed..."
-    openssl req -new -x509 -days 365 -nodes \
-        -subj "/CN=mail.reprobados.com" \
-        -out config/ssl/mail.reprobados.com-cert.pem \
-        -keyout config/ssl/mail.reprobados.com-key.pem
-    cat config/ssl/mail.reprobados.com-cert.pem \
-        config/ssl/mail.reprobados.com-key.pem \
-        > config/ssl/mail.reprobados.com-full.pem
-    echo "[OK] Certificado generado en config/ssl/"
+# Generar certificados SSL dentro de un contenedor Docker
+# (así los archivos quedan con el contexto SELinux correcto para ser leídos por otros contenedores)
+if [ ! -f config/ssl/mail.reprobados.com-full.pem ]; then
+    echo "[..] Generando certificados SSL en contenedor Docker..."
+    mkdir -p config/ssl
+    chmod 777 config/ssl
+    docker run --rm \
+        -v "$(pwd)/config/ssl:/ssl:z" \
+        alpine sh -c "
+            apk add --no-cache openssl -q &&
+            openssl req -new -x509 -days 365 -nodes \
+                -subj '/CN=mail.reprobados.com' \
+                -out /ssl/mail.reprobados.com-cert.pem \
+                -keyout /ssl/mail.reprobados.com-key.pem 2>/dev/null &&
+            cat /ssl/mail.reprobados.com-cert.pem /ssl/mail.reprobados.com-key.pem \
+                > /ssl/mail.reprobados.com-full.pem &&
+            echo 'Certificados generados correctamente'
+        "
+    echo "[OK] Certificados generados en config/ssl/"
 else
-    echo "[OK] Certificado SSL ya existe"
+    echo "[OK] Certificados SSL ya existen"
 fi
 
 # Crear archivo de cuentas si no existe (evita error de permisos en primera ejecución)
