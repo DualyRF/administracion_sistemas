@@ -6,8 +6,8 @@
 # Uso      : sudo bash main.sh [-i|-v|-r]
 # =============================================================================
 
-source ./lib/utils.sh
-source ./lib/http_functions.sh
+source "$(dirname "$0")/../lib/utils.sh"
+source "$(dirname "$0")/../lib/http_functions.sh"
 
 # -----------------------------------------------------------------------------
 # MENÚ PRINCIPAL
