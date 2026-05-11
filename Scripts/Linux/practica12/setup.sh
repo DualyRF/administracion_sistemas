@@ -32,7 +32,7 @@ if [ ! -f config/ssl/mail.reprobados.com-full.pem ]; then
                 -subj '/CN=mail.reprobados.com' \
                 -out /ssl/mail.reprobados.com-cert.pem \
                 -keyout /ssl/mail.reprobados.com-key.pem 2>/dev/null &&
-            cat /ssl/mail.reprobados.com-cert.pem /ssl/mail.reprobados.com-key.pem \
+            cat /ssl/mail.reprobados.com-key.pem /ssl/mail.reprobados.com-cert.pem \
                 > /ssl/mail.reprobados.com-full.pem &&
             echo 'Certificados generados correctamente'
         "
