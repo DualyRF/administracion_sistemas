@@ -5,6 +5,15 @@ echo "======================================================"
 echo "  Setup — Práctica 12: Servidor de Correo Privado"
 echo "======================================================"
 
+# Instalar openssl si no está disponible
+if ! command -v openssl &>/dev/null; then
+    echo "[..] Instalando openssl..."
+    zypper install -y openssl
+    echo "[OK] openssl instalado"
+else
+    echo "[OK] openssl disponible"
+fi
+
 # Crear .env si no existe
 if [ ! -f .env ]; then
     cp .env.example .env
