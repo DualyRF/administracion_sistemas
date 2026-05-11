@@ -66,48 +66,32 @@ docker compose down 2>/dev/null || true
 echo "[..] Levantando contenedores..."
 docker compose up -d --build
 
-# Pedir datos de las cuentas de correo
+# Pedir datos de la cuenta inicial
 echo ""
 echo "======================================================"
-echo "  Configuración de cuentas de correo"
+echo "  Cuenta de correo inicial"
 echo "======================================================"
-read -rp "  Usuario 1 (sin @reprobados.com): " USUARIO1
+read -rp "  Usuario (sin @reprobados.com): " USUARIO1
 read -rsp "  Contraseña para $USUARIO1: " PASS1; echo
-read -rp "  Usuario 2 (sin @reprobados.com): " USUARIO2
-read -rsp "  Contraseña para $USUARIO2: " PASS2; echo
 echo ""
 
 EMAIL1="${USUARIO1}@reprobados.com"
-EMAIL2="${USUARIO2}@reprobados.com"
 
-# Función para agregar cuenta con detección de si ya existe
-agregar_cuenta() {
-    local EMAIL="$1"
-    local PASS="$2"
-
-    if docker exec mailserver setup email list 2>/dev/null | grep -q "^${EMAIL}"; then
-        echo "[OK] Cuenta $EMAIL ya existe, omitiendo"
-        return 0
-    fi
-
-    local OUTPUT
-    OUTPUT=$(docker exec mailserver setup email add "$EMAIL" "$PASS" 2>&1)
-    if [ $? -eq 0 ]; then
-        echo "[OK] Cuenta $EMAIL creada"
-        return 0
-    else
-        echo "[ERROR] No se pudo crear $EMAIL: $OUTPUT"
-        return 1
-    fi
-}
-
-# Crear cuentas (reintenta hasta que el contenedor acepte comandos)
-echo "[..] Creando cuentas de correo (esperando que el contenedor arranque)..."
+# Crear cuenta (reintenta hasta que el contenedor acepte comandos)
+echo "[..] Creando cuenta de correo (esperando que el contenedor arranque)..."
 CUENTAS_OK=0
 for i in $(seq 1 18); do
     if docker exec mailserver setup email list 2>/dev/null; then
-        agregar_cuenta "$EMAIL1" "$PASS1"
-        agregar_cuenta "$EMAIL2" "$PASS2"
+        if docker exec mailserver setup email list 2>/dev/null | grep -q "^${EMAIL1}"; then
+            echo "[OK] Cuenta $EMAIL1 ya existe, omitiendo"
+        else
+            OUTPUT=$(docker exec mailserver setup email add "$EMAIL1" "$PASS1" 2>&1)
+            if [ $? -eq 0 ]; then
+                echo "[OK] Cuenta $EMAIL1 creada"
+            else
+                echo "[ERROR] No se pudo crear $EMAIL1: $OUTPUT"
+            fi
+        fi
         CUENTAS_OK=1
         break
     fi
@@ -116,7 +100,7 @@ for i in $(seq 1 18); do
 done
 
 if [ "$CUENTAS_OK" = "0" ]; then
-    echo "[ERROR] No se pudieron crear las cuentas. Revisa: docker compose logs mailserver"
+    echo "[ERROR] No se pudo contactar el contenedor. Revisa: docker compose logs mailserver"
     exit 1
 fi
 
@@ -155,9 +139,9 @@ echo ""
 echo "  Webmail: https://mail.reprobados.com"
 echo "  (acepta la advertencia del certificado self-signed)"
 echo ""
-echo "  Cuentas:"
+echo "  Cuenta inicial:"
 echo "    $EMAIL1"
-echo "    $EMAIL2"
+echo "  Para agregar más cuentas usa: bash gestionar-correos.sh"
 echo ""
 echo "  Estado de los contenedores:"
 docker compose ps
