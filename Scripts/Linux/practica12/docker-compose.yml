@@ -14,7 +14,7 @@ services:
       - mail_data:/var/mail
       - mail_state:/var/mail-state
       - ./logs:/var/log/mail
-      - ./config:/tmp/docker-mailserver
+      - ./config:/tmp/docker-mailserver:z
       - /etc/localtime:/etc/localtime:ro
     cap_add:
       - NET_ADMIN
