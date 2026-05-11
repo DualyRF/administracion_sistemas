@@ -13,7 +13,7 @@ services:
     volumes:
       - mail_data:/var/mail
       - mail_state:/var/mail-state
-      - ./logs:/var/log/mail
+      - ./logs:/var/log/mail:z
       - ./config:/tmp/docker-mailserver:z
       - /etc/localtime:/etc/localtime:ro
     cap_add:

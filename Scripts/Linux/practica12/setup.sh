@@ -45,8 +45,9 @@ fi
 touch config/postfix-accounts.cf
 
 # Fijar permisos para que el contenedor pueda escribir (SELinux)
-sudo chmod -R 777 config/
-echo "[OK] Permisos de config/ ajustados"
+chmod -R 777 config/
+chmod -R 777 logs/
+echo "[OK] Permisos de config/ y logs/ ajustados"
 
 # Añadir entrada a /etc/hosts si no existe
 if ! grep -q "reprobados.com" /etc/hosts 2>/dev/null; then
