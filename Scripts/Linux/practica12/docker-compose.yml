@@ -31,7 +31,7 @@ services:
     image: roundcube/roundcubemail:latest-apache
     container_name: roundcube
     volumes:
-      - ./webmail/config.inc.php:/var/roundcube/config/config.inc.php
+      - ./webmail/config.inc.php:/var/www/html/config/config.inc.php
       - roundcube_temp:/tmp/roundcube-temp
     environment:
       - RC_DB_USER=${RC_DB_USER}
