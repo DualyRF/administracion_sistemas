@@ -21,5 +21,16 @@ docker run --rm \
   "
 
 echo "[..] Reiniciando mailserver..."
-docker compose restart mailserver
+docker compose stop mailserver
+docker compose up -d mailserver
+
+echo "[..] Esperando que mailserver inicialice..."
+sleep 20
+
+echo "[..] Aplicando orden correcto del certificado en Postfix..."
+docker exec mailserver sh -c "
+    cat /tmp/docker-mailserver/ssl/mail.reprobados.com-key.pem \
+        /tmp/docker-mailserver/ssl/mail.reprobados.com-cert.pem \
+        > /etc/dms/tls/mail.reprobados.com-full.pem && postfix reload
+"
 echo "[OK] Listo"

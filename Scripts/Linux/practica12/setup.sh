@@ -65,16 +65,48 @@ docker compose down 2>/dev/null || true
 echo "[..] Levantando contenedores..."
 docker compose up -d --build
 
-# Crear cuentas de correo (el mailserver las necesita para inicializar)
-# Reintenta durante 90 segundos hasta que el contenedor acepte comandos
+# Pedir datos de las cuentas de correo
+echo ""
+echo "======================================================"
+echo "  Configuración de cuentas de correo"
+echo "======================================================"
+read -rp "  Usuario 1 (sin @reprobados.com): " USUARIO1
+read -rsp "  Contraseña para $USUARIO1: " PASS1; echo
+read -rp "  Usuario 2 (sin @reprobados.com): " USUARIO2
+read -rsp "  Contraseña para $USUARIO2: " PASS2; echo
+echo ""
+
+EMAIL1="${USUARIO1}@reprobados.com"
+EMAIL2="${USUARIO2}@reprobados.com"
+
+# Función para agregar cuenta con detección de si ya existe
+agregar_cuenta() {
+    local EMAIL="$1"
+    local PASS="$2"
+
+    if docker exec mailserver setup email list 2>/dev/null | grep -q "^${EMAIL}"; then
+        echo "[OK] Cuenta $EMAIL ya existe, omitiendo"
+        return 0
+    fi
+
+    local OUTPUT
+    OUTPUT=$(docker exec mailserver setup email add "$EMAIL" "$PASS" 2>&1)
+    if [ $? -eq 0 ]; then
+        echo "[OK] Cuenta $EMAIL creada"
+        return 0
+    else
+        echo "[ERROR] No se pudo crear $EMAIL: $OUTPUT"
+        return 1
+    fi
+}
+
+# Crear cuentas (reintenta hasta que el contenedor acepte comandos)
 echo "[..] Creando cuentas de correo (esperando que el contenedor arranque)..."
 CUENTAS_OK=0
 for i in $(seq 1 18); do
-    if docker exec mailserver setup email add dualy@reprobados.com 'PassSegura1!' 2>/dev/null; then
-        echo "[OK] Cuenta dualy@reprobados.com creada"
-        docker exec mailserver setup email add admin@reprobados.com 'PassSegura2!' 2>/dev/null && \
-            echo "[OK] Cuenta admin@reprobados.com creada" || \
-            echo "[WARN] admin@reprobados.com ya existe o falló"
+    if docker exec mailserver setup email list 2>/dev/null; then
+        agregar_cuenta "$EMAIL1" "$PASS1"
+        agregar_cuenta "$EMAIL2" "$PASS2"
         CUENTAS_OK=1
         break
     fi
@@ -99,6 +131,15 @@ for i in $(seq 1 12); do
     sleep 5
 done
 
+# Corregir orden del certificado en Postfix (key debe ir primero en full.pem)
+echo "[..] Aplicando certificado TLS en Postfix..."
+docker exec mailserver sh -c "
+    cat /tmp/docker-mailserver/ssl/mail.reprobados.com-key.pem \
+        /tmp/docker-mailserver/ssl/mail.reprobados.com-cert.pem \
+        > /etc/dms/tls/mail.reprobados.com-full.pem && postfix reload
+" 2>/dev/null && echo "[OK] TLS de Postfix configurado" || \
+    echo "[WARN] TLS: revisar manualmente con generar-certs.sh"
+
 # Generar claves DKIM
 echo "[..] Generando claves DKIM..."
 docker exec mailserver setup config dkim 2>/dev/null && \
@@ -114,8 +155,8 @@ echo "  Webmail: https://mail.reprobados.com"
 echo "  (acepta la advertencia del certificado self-signed)"
 echo ""
 echo "  Cuentas:"
-echo "    dualy@reprobados.com  /  PassSegura1!"
-echo "    admin@reprobados.com  /  PassSegura2!"
+echo "    $EMAIL1"
+echo "    $EMAIL2"
 echo ""
 echo "  Estado de los contenedores:"
 docker compose ps
